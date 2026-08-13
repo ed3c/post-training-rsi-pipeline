@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from .config import PipelineConfig
 from .cost import CostLedger
-from .evaluation.adapter import Evaluator
+from .evaluation.adapter import DeterministicEvaluator, Evaluator
 from .generation import DeterministicGenerator
 from .lineage.store import ArtifactStore
 from .models import IterationOutcome, RSIRunResult
-from .serving.adapter import ServingAdapter
-from .training.adapter import Trainer
+from .serving.adapter import LocalArtifactServingAdapter, ServingAdapter
+from .training.adapter import MockTrainer, Trainer
 from .verification.pipeline import VerificationPipeline
 
 
@@ -105,3 +106,20 @@ class RSIEngine:
         )
         self.dependencies.store.write_report("rsi-run-summary.json", result.to_dict())
         return result
+
+
+def build_default_engine(config: PipelineConfig, *, workspace: str | Path) -> RSIEngine:
+    store = ArtifactStore(workspace)
+    dependencies = EngineDependencies(
+        generator=DeterministicGenerator(model=config.teacher_model),
+        verifier=VerificationPipeline(
+            config.verification,
+            benchmark_texts=config.benchmark_texts,
+        ),
+        trainer=MockTrainer(),
+        evaluator=DeterministicEvaluator(),
+        serving=LocalArtifactServingAdapter(),
+        store=store,
+        ledger=CostLedger(config.budget),
+    )
+    return RSIEngine(config, dependencies)
