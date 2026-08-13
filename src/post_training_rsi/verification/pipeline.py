@@ -75,7 +75,7 @@ class VerificationPipeline:
             safety = self.safety_classifier.classify(example.prompt, example.response)
             metrics["safety_safe"] = safety.safe
             if not safety.safe:
-                reasons.extend(f"SAFETY_{category}" for category in safety.categories)
+                reasons.append(f"SAFETY_{safety.category}")
 
             code = self.code_verifier.verify(example.code)
             if not code.safe:
