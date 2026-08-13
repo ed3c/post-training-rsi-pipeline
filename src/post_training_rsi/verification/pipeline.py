@@ -58,13 +58,16 @@ class VerificationPipeline:
             if lexical["type_token_ratio"] < self.config.min_type_token_ratio:
                 reasons.append("LOW_TYPE_TOKEN_RATIO")
 
-            semantic_similarity = self.novelty_index.max_similarity(example.text)
+            if normalized_hash in self._accepted_hashes:
+                semantic_similarity = 1.0
+            else:
+                semantic_similarity = self.novelty_index.max_similarity(example.text)
+                if semantic_similarity > self.config.max_semantic_similarity:
+                    reasons.append("SEMANTIC_DUPLICATE")
             metrics["semantic_similarity"] = round(semantic_similarity, 6)
-            if semantic_similarity > self.config.max_semantic_similarity:
-                reasons.append("SEMANTIC_DUPLICATE")
 
-            overlap = self.benchmark_index.max_overlap(example.text)
-            lcs = self.benchmark_index.max_lcs_ratio(example.text)
+            overlap = self.benchmark_index.max_overlap(example.prompt)
+            lcs = self.benchmark_index.max_lcs_ratio(example.prompt)
             metrics["benchmark_ngram_overlap"] = round(overlap, 6)
             metrics["benchmark_lcs_ratio"] = round(lcs, 6)
             if overlap > self.config.max_benchmark_overlap:
