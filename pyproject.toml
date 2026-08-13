@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "post-training-rsi-pipeline"
+version = "0.1.0"
+description = "Evidence-first post-training, RSI, and model-harness co-evolution pipeline"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "ed3c"}]
+dependencies = []
+
+[project.optional-dependencies]
+cloud = ["httpx"]
+semantic = ["numpy", "sentence-transformers"]
+tracking = ["mlflow"]
+langgraph = ["langgraph"]
+training = ["torch", "transformers", "datasets", "trl", "accelerate", "deepspeed"]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11"]
+
+[project.scripts]
+post-training-rsi = "post_training_rsi.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+warn_return_any = true
+disallow_untyped_defs = true
+no_implicit_optional = true
