@@ -7,13 +7,14 @@ from typing import Iterable
 
 from ..config import VerificationConfig
 from ..models import SyntheticExample, VerificationBatch, VerificationRecord
+from .code import PythonStaticVerifier
 from .decontamination import BenchmarkIndex
 from .lexical import lexical_metrics
 from .semantic import NoveltyIndex, TokenJaccardNoveltyIndex
 
 
 class VerificationPipeline:
-    """Evidence-producing diversity and benchmark-isolation gate."""
+    """Evidence-producing data gate used by synthesis and trajectory harvesting."""
 
     def __init__(
         self,
@@ -27,6 +28,7 @@ class VerificationPipeline:
             tuple(benchmark_texts), ngram_size=config.benchmark_ngram_size
         )
         self.novelty_index = novelty_index or TokenJaccardNoveltyIndex()
+        self.code_verifier = PythonStaticVerifier(config.allowed_python_imports)
         self._accepted_hashes: set[str] = set()
 
     @property
@@ -66,6 +68,9 @@ class VerificationPipeline:
                 reasons.append("BENCHMARK_CONTAMINATION_NGRAM")
             if lcs > self.config.max_lcs_ratio:
                 reasons.append("BENCHMARK_CONTAMINATION_LCS")
+            code = self.code_verifier.verify(example.code)
+            if not code.safe:
+                reasons.extend(code.reasons)
             unique_reasons = sorted(set(reasons))
             is_accepted = not unique_reasons
             records.append(
