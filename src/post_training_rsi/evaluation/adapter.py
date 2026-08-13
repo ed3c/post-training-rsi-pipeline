@@ -1,143 +1,114 @@
 from __future__ import annotations
 
 import json
-import math
 import os
-import shlex
 import subprocess
-from dataclasses import dataclass
-from pathlib import Path
 from typing import Protocol
 
-from ..domain import Checkpoint, EvaluationResult, FailureTrace, HarnessSnapshot
-from ..hashing import canonical_sha256
+from ..models import EvaluationResult, TrainingResult
 
 
 class Evaluator(Protocol):
     def evaluate(
         self,
-        checkpoint: Checkpoint,
         *,
-        harness: HarnessSnapshot | None = None,
+        checkpoint: TrainingResult,
+        iteration: int,
+        benchmark_id: str,
     ) -> EvaluationResult: ...
 
 
-@dataclass(slots=True)
 class DeterministicEvaluator:
-    max_training_examples_for_saturation: int = 30
+    """Reproducible benchmark adapter with an explicit score schedule for control-loop tests."""
 
-    def evaluate(
-        self,
-        checkpoint: Checkpoint,
-        *,
-        harness: HarnessSnapshot | None = None,
-    ) -> EvaluationResult:
-        count = int(checkpoint.metadata.get("accepted_count", 0))
-        iteration = int(checkpoint.metadata.get("iteration", 1))
-        harness_text = harness.system_prompt.lower() if harness else ""
-        prompt_bonus = 0.0
-        failures: list[FailureTrace] = []
-        task_scores: dict[str, float] = {}
-        families = {
-            "reasoning": "invariant",
-            "tool_use": "validate arguments",
-            "state_check": "verify intermediate",
-            "timeout_recovery": "bounded retry",
+    def __init__(self, score_schedule: dict[int, float] | None = None) -> None:
+        self.score_schedule = score_schedule or {
+            1: 0.58,
+            2: 0.64,
+            3: 0.62,
+            4: 0.63,
+            5: 0.625,
         }
-        data_bonus = 0.20 * min(1.0, count / self.max_training_examples_for_saturation)
-        iteration_bonus = min(0.15, 0.025 * iteration)
-        for task_id, cue in families.items():
-            cue_bonus = 0.04 if cue in harness_text else 0.0
-            score = min(1.0, 0.48 + data_bonus + iteration_bonus + cue_bonus)
-            task_scores[task_id] = round(score, 6)
-            prompt_bonus += cue_bonus / len(families)
-            if score < 0.70:
-                failures.append(
-                    FailureTrace(
-                        task_id=task_id,
-                        category=self._category(task_id),
-                        message=f"{task_id} did not meet the 0.70 acceptance threshold",
-                    )
-                )
-        generalization_penalty = max(
-            0.0,
-            0.015 * max(0, iteration - 4) + 0.02 * max(0, len(harness_text) / 1200 - 1),
-        )
-        score = sum(task_scores.values()) / len(task_scores) - generalization_penalty
-        score = max(0.0, min(1.0, score))
-        return EvaluationResult(
-            score=round(score, 6),
-            task_scores=task_scores,
-            failures=tuple(failures),
-            metrics={
-                "accepted_training_examples": count,
-                "prompt_bonus": round(prompt_bonus, 6),
-                "generalization_penalty": round(generalization_penalty, 6),
-                "checkpoint_fingerprint": canonical_sha256(checkpoint.to_dict())[:16],
-                "finite": math.isfinite(score),
-            },
-        )
-
-    @staticmethod
-    def _category(task_id: str) -> str:
-        return {
-            "tool_use": "INVALID_JSON",
-            "state_check": "UNVERIFIED_INTERMEDIATE_STATE",
-            "timeout_recovery": "TIMEOUT",
-        }.get(task_id, "GENERAL")
-
-
-@dataclass(slots=True)
-class CommandEvaluator:
-    command: str
-    timeout_seconds: int = 60 * 60
 
     def evaluate(
         self,
-        checkpoint: Checkpoint,
         *,
-        harness: HarnessSnapshot | None = None,
+        checkpoint: TrainingResult,
+        iteration: int,
+        benchmark_id: str,
     ) -> EvaluationResult:
-        result_path = checkpoint.artifact_path.parent / "evaluation_result.json"
-        harness_path: Path | None = None
-        if harness is not None:
-            harness_path = checkpoint.artifact_path.parent / "candidate_harness.json"
-            harness_path.write_text(
-                json.dumps(harness.to_dict(), indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
+        score = self.score_schedule.get(
+            iteration,
+            max(0.0, min(1.0, 0.61 - 0.003 * max(0, iteration - 5))),
+        )
+        score = round(float(score), 6)
+        failures: list[dict[str, object]] = []
+        if score < 0.70:
+            failures = [
+                {
+                    "code": "INVALID_JSON",
+                    "task_id": f"{benchmark_id}-tool-schema-{iteration}",
+                    "message": "candidate emitted an invalid tool argument in a boundary case",
+                },
+                {
+                    "code": "UNVERIFIED_INTERMEDIATE_STATE",
+                    "task_id": f"{benchmark_id}-state-{iteration}",
+                    "message": "candidate skipped one state assertion before the final action",
+                },
+            ]
+        return EvaluationResult(
+            score=score,
+            benchmark_id=benchmark_id,
+            metrics={
+                "task_success_rate": score,
+                "tool_argument_validity": round(min(1.0, score + 0.08), 6),
+                "state_assertion_rate": round(max(0.0, score - 0.04), 6),
+            },
+            failure_traces=failures,
+            estimated_cost_usd=0.0,
+        )
+
+
+class CommandEvaluator:
+    """Runs Inspect AI, lm-eval, or an internal benchmark through a JSON contract."""
+
+    def __init__(self, command: list[str], *, timeout_seconds: float = 7_200.0) -> None:
+        if not command:
+            raise ValueError("command cannot be empty")
+        self.command = command
+        self.timeout_seconds = timeout_seconds
+
+    def evaluate(
+        self,
+        *,
+        checkpoint: TrainingResult,
+        iteration: int,
+        benchmark_id: str,
+    ) -> EvaluationResult:
+        result_path = checkpoint.checkpoint_path / "evaluation-result.json"
         env = os.environ.copy()
         env.update(
             {
+                "RSI_ITERATION": str(iteration),
                 "RSI_CHECKPOINT_ID": checkpoint.checkpoint_id,
-                "RSI_CHECKPOINT_PATH": str(checkpoint.artifact_path.resolve()),
-                "RSI_EVAL_RESULT_PATH": str(result_path.resolve()),
-                "RSI_HARNESS_PATH": str(harness_path.resolve()) if harness_path else "",
+                "RSI_CHECKPOINT_PATH": str(checkpoint.checkpoint_path),
+                "RSI_BENCHMARK_ID": benchmark_id,
+                "RSI_EVAL_RESULT_PATH": str(result_path),
             }
         )
-        process = subprocess.run(
-            shlex.split(self.command),
+        subprocess.run(
+            self.command,
             env=env,
-            check=False,
-            capture_output=True,
-            text=True,
+            check=True,
             timeout=self.timeout_seconds,
         )
-        (checkpoint.artifact_path.parent / "evaluation.stdout.log").write_text(
-            process.stdout,
-            encoding="utf-8",
-        )
-        (checkpoint.artifact_path.parent / "evaluation.stderr.log").write_text(
-            process.stderr,
-            encoding="utf-8",
-        )
-        if process.returncode != 0:
-            raise RuntimeError(f"evaluation command failed with exit code {process.returncode}")
-        data = json.loads(result_path.read_text(encoding="utf-8"))
-        failures = tuple(FailureTrace(**item) for item in data.get("failures", []))
+        if not result_path.exists():
+            raise RuntimeError(f"external evaluator did not create {result_path}")
+        payload = json.loads(result_path.read_text(encoding="utf-8"))
         return EvaluationResult(
-            score=float(data["score"]),
-            task_scores={str(key): float(value) for key, value in data["task_scores"].items()},
-            failures=failures,
-            metrics=data.get("metrics", {}),
+            score=float(payload["score"]),
+            benchmark_id=str(payload.get("benchmark_id", benchmark_id)),
+            metrics={key: float(value) for key, value in payload.get("metrics", {}).items()},
+            failure_traces=list(payload.get("failure_traces", [])),
+            estimated_cost_usd=float(payload.get("estimated_cost_usd", 0.0)),
         )

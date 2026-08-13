@@ -1,71 +1,55 @@
 from __future__ import annotations
 
+import json
 import os
-import shlex
 import subprocess
-from dataclasses import dataclass
 from typing import Protocol
 
-from ..domain import Checkpoint
+from ..models import TrainingResult
 
 
 class ServingAdapter(Protocol):
-    def deploy(self, checkpoint: Checkpoint) -> str: ...
-    def undeploy(self, endpoint: str) -> None: ...
+    def deploy(self, checkpoint: TrainingResult) -> str: ...
 
 
-@dataclass(slots=True)
 class LocalArtifactServingAdapter:
-    def deploy(self, checkpoint: Checkpoint) -> str:
-        return checkpoint.artifact_path.resolve().as_uri()
+    """Returns an immutable local URI used by the deterministic evaluator."""
 
-    def undeploy(self, endpoint: str) -> None:
-        del endpoint
+    def deploy(self, checkpoint: TrainingResult) -> str:
+        return checkpoint.checkpoint_path.resolve().as_uri()
 
 
-@dataclass(slots=True)
 class CommandServingAdapter:
-    """Provider-neutral hook for vLLM, SGLang, or a managed serving plane."""
+    """Invokes a serving system through an environment/JSON readiness contract."""
 
-    deploy_command: str
-    undeploy_command: str | None = None
-    timeout_seconds: int = 20 * 60
+    def __init__(self, command: list[str], *, timeout_seconds: float = 1_800.0) -> None:
+        if not command:
+            raise ValueError("command cannot be empty")
+        self.command = command
+        self.timeout_seconds = timeout_seconds
 
-    def deploy(self, checkpoint: Checkpoint) -> str:
+    def deploy(self, checkpoint: TrainingResult) -> str:
+        result_path = checkpoint.checkpoint_path / "serving-result.json"
         env = os.environ.copy()
         env.update(
             {
                 "RSI_CHECKPOINT_ID": checkpoint.checkpoint_id,
-                "RSI_CHECKPOINT_PATH": str(checkpoint.artifact_path.resolve()),
+                "RSI_CHECKPOINT_PATH": str(checkpoint.checkpoint_path),
+                "RSI_SERVE_RESULT_PATH": str(result_path),
             }
         )
-        process = subprocess.run(
-            shlex.split(self.deploy_command),
+        subprocess.run(
+            self.command,
             env=env,
-            check=False,
-            capture_output=True,
-            text=True,
+            check=True,
             timeout=self.timeout_seconds,
         )
-        if process.returncode != 0:
-            raise RuntimeError(f"serving deploy failed: {process.stderr.strip()}")
-        endpoint = process.stdout.strip().splitlines()[-1] if process.stdout.strip() else ""
+        if not result_path.exists():
+            raise RuntimeError(f"serving command did not create {result_path}")
+        payload = json.loads(result_path.read_text(encoding="utf-8"))
+        if payload.get("ready") is not True:
+            raise RuntimeError("serving deployment did not report ready=true")
+        endpoint = str(payload.get("endpoint", "")).strip()
         if not endpoint:
-            raise RuntimeError("serving deploy command did not print an endpoint")
+            raise RuntimeError("serving result must contain a non-empty endpoint")
         return endpoint
-
-    def undeploy(self, endpoint: str) -> None:
-        if not self.undeploy_command:
-            return
-        env = os.environ.copy()
-        env["RSI_SERVING_ENDPOINT"] = endpoint
-        process = subprocess.run(
-            shlex.split(self.undeploy_command),
-            env=env,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=self.timeout_seconds,
-        )
-        if process.returncode != 0:
-            raise RuntimeError(f"serving undeploy failed: {process.stderr.strip()}")
