@@ -1,13 +1,13 @@
-"""Post-training RSI and model-harness co-evolution toolkit."""
+"""Post-training RSI and model/Harness co-evolution reference runtime."""
 
-from .domain import Checkpoint, EvaluationResult, FilterDecision, HarnessSnapshot, TrainingExample
+from .config import PipelineConfig
+from .models import EvaluationResult, SyntheticExample, TrainingResult
 
 __all__ = [
-    "Checkpoint",
     "EvaluationResult",
-    "FilterDecision",
-    "HarnessSnapshot",
-    "TrainingExample",
+    "PipelineConfig",
+    "SyntheticExample",
+    "TrainingResult",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
