@@ -34,7 +34,7 @@ training = [
 dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.16", "mypy>=1.11"]
 
 [project.scripts]
-post-training-rsi = "post_training_rsi.cli:main"
+post-training-rsi = "post_training_rsi.__main__:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
