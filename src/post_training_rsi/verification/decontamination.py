@@ -1,92 +1,59 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Iterable
+from dataclasses import dataclass
 
 from .lexical import tokenize
 
 
-@dataclass(frozen=True, slots=True)
-class ContaminationResult:
-    contaminated: bool
-    overlap_ratio: float
-    lcs_ratio: float
-    benchmark_id: str | None = None
+def extract_ngrams(tokens: list[str], n: int) -> set[tuple[str, ...]]:
+    if not tokens:
+        return set()
+    if len(tokens) < n:
+        return {tuple(tokens)}
+    return {tuple(tokens[index : index + n]) for index in range(len(tokens) - n + 1)}
 
 
-@dataclass(slots=True)
-class _BenchmarkRecord:
-    benchmark_id: str
-    tokens: tuple[str, ...]
-    ngrams: frozenset[tuple[str, ...]]
+def candidate_overlap(candidate: str, benchmark: str, *, n: int) -> float:
+    candidate_ngrams = extract_ngrams(tokenize(candidate), n)
+    benchmark_ngrams = extract_ngrams(tokenize(benchmark), n)
+    if not candidate_ngrams or not benchmark_ngrams:
+        return 0.0
+    return len(candidate_ngrams & benchmark_ngrams) / len(candidate_ngrams)
+
+
+def lcs_ratio(left: str, right: str) -> float:
+    left_tokens = tokenize(left)
+    right_tokens = tokenize(right)
+    if not left_tokens or not right_tokens:
+        return 0.0
+    previous = [0] * (len(right_tokens) + 1)
+    for left_token in left_tokens:
+        current = [0]
+        for index, right_token in enumerate(right_tokens, start=1):
+            if left_token == right_token:
+                current.append(previous[index - 1] + 1)
+            else:
+                current.append(max(previous[index], current[index - 1]))
+        previous = current
+    return previous[-1] / min(len(left_tokens), len(right_tokens))
 
 
 @dataclass(slots=True)
 class BenchmarkIndex:
+    benchmark_texts: tuple[str, ...]
     ngram_size: int = 13
-    overlap_threshold: float = 0.70
-    lcs_threshold: float = 0.80
-    _records: list[_BenchmarkRecord] = field(default_factory=list)
 
-    def add(self, benchmark_id: str, text: str) -> None:
-        tokens = tuple(tokenize(text))
-        self._records.append(
-            _BenchmarkRecord(
-                benchmark_id=benchmark_id,
-                tokens=tokens,
-                ngrams=frozenset(self._extract_ngrams(tokens)),
-            )
+    def max_overlap(self, candidate: str) -> float:
+        return max(
+            (
+                candidate_overlap(candidate, benchmark, n=self.ngram_size)
+                for benchmark in self.benchmark_texts
+            ),
+            default=0.0,
         )
 
-    def extend(self, texts: Iterable[str], prefix: str = "benchmark") -> None:
-        for index, text in enumerate(texts):
-            self.add(f"{prefix}-{index:04d}", text)
-
-    def check(self, text: str) -> ContaminationResult:
-        candidate_tokens = tuple(tokenize(text))
-        if not candidate_tokens or not self._records:
-            return ContaminationResult(False, 0.0, 0.0, None)
-        candidate_ngrams = frozenset(self._extract_ngrams(candidate_tokens))
-        best = ContaminationResult(False, 0.0, 0.0, None)
-        for record in self._records:
-            overlap = self._overlap_ratio(candidate_ngrams, record.ngrams)
-            lcs = self._lcs_ratio(candidate_tokens, record.tokens)
-            contaminated = overlap > self.overlap_threshold or lcs > self.lcs_threshold
-            if contaminated or max(overlap, lcs) > max(best.overlap_ratio, best.lcs_ratio):
-                best = ContaminationResult(
-                    contaminated=contaminated,
-                    overlap_ratio=overlap,
-                    lcs_ratio=lcs,
-                    benchmark_id=record.benchmark_id,
-                )
-        return best
-
-    def _extract_ngrams(self, tokens: tuple[str, ...]) -> set[tuple[str, ...]]:
-        if not tokens:
-            return set()
-        n = min(self.ngram_size, len(tokens))
-        return {tuple(tokens[i : i + n]) for i in range(len(tokens) - n + 1)}
-
-    @staticmethod
-    def _overlap_ratio(
-        candidate: frozenset[tuple[str, ...]], benchmark: frozenset[tuple[str, ...]]
-    ) -> float:
-        return len(candidate & benchmark) / len(candidate) if candidate else 0.0
-
-    @staticmethod
-    def _lcs_ratio(left: tuple[str, ...], right: tuple[str, ...]) -> float:
-        if not left or not right:
-            return 0.0
-        if len(left) > len(right):
-            left, right = right, left
-        previous = [0] * (len(left) + 1)
-        for token_right in right:
-            current = [0]
-            for index, token_left in enumerate(left, 1):
-                current.append(
-                    previous[index - 1] + 1
-                    if token_left == token_right
-                    else max(previous[index], current[-1])
-                )
-            previous = current
-        return previous[-1] / min(len(left), len(right))
+    def max_lcs_ratio(self, candidate: str) -> float:
+        return max(
+            (lcs_ratio(candidate, benchmark) for benchmark in self.benchmark_texts),
+            default=0.0,
+        )
