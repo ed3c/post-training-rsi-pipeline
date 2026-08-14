@@ -1,0 +1,93 @@
+name: Sync Recovery Activation Index
+
+on:
+  push:
+    branches:
+      - feat/recovery-activation-plan
+    paths:
+      - ".github/workflows/sync-recovery-activation-index.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  synchronize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/recovery-activation-plan
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Synchronize indexes and scope
+        run: |
+          python scripts/sync_recovery_activation_index.py
+          python scripts/sync_recovery_activation_index.py --check
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          manifest_path = Path("docs/recovery-activation-manifest.json")
+          value = json.loads(manifest_path.read_text(encoding="utf-8"))
+          owned = list(value["owned_paths"])
+          for path in (
+              "scripts/sync_recovery_activation_index.py",
+              "docs/validation/recovery-activation-plan-latest.json",
+              "docs/validation/recovery-activation-plan-latest.md",
+          ):
+              if path not in owned:
+                  owned.append(path)
+          value["owned_paths"] = owned
+          manifest_path.write_text(
+              json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+          document_path = Path("docs/recovery-activation-plan.md")
+          document = document_path.read_text(encoding="utf-8")
+          anchor = "  - .github/workflows/recovery-activation-plan.yml\n"
+          addition = (
+              "  - .github/workflows/recovery-activation-plan.yml\n"
+              "  - scripts/sync_recovery_activation_index.py\n"
+          )
+          if addition not in document:
+              if anchor not in document:
+                  raise SystemExit("PR-14 allowed-path anchor is missing")
+              document = document.replace(anchor, addition, 1)
+          document_path.write_text(document, encoding="utf-8")
+          PY
+
+      - name: Validate index contracts
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+          ruff check --fix scripts/sync_recovery_activation_index.py
+          ruff format scripts/sync_recovery_activation_index.py
+          ruff check src tests scripts
+          python -m pytest -q \
+            tests/test_recovery_activation_manifest.py \
+            tests/test_documentation_contract.py
+
+      - name: Remove this temporary synchronizer
+        run: rm -f .github/workflows/sync-recovery-activation-index.yml
+
+      - name: Commit synchronized indexes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "ed3c"
+          git config user.email "mcnum01@gmail.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "PR-14 indexes are already synchronized."
+            exit 0
+          fi
+          git commit -m "docs(recovery): synchronize PR-14 activation indexes"
+          git push origin HEAD:feat/recovery-activation-plan
