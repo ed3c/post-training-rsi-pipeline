@@ -39,6 +39,7 @@ def evaluation_snapshot(
     iteration: int = 1,
     peak_score: float = 0.50,
     peak_checkpoint_id: str | None = "ckpt-peak",
+    candidate_checkpoint_id: str | None = None,
     plateau_count: int = 0,
     total_cost_usd: float = 0.0,
 ) -> StateSnapshot:
@@ -50,7 +51,11 @@ def evaluation_snapshot(
         state=ControlState.EVALUATE,
         entered_at=NOW,
         active_checkpoint_id=peak_checkpoint_id,
-        candidate_checkpoint_id=f"ckpt-candidate-{iteration}",
+        candidate_checkpoint_id=(
+            candidate_checkpoint_id
+            if candidate_checkpoint_id is not None
+            else f"ckpt-candidate-{iteration}"
+        ),
         peak_checkpoint_id=peak_checkpoint_id,
         peak_score=peak_score,
         plateau_count=plateau_count,
@@ -62,12 +67,13 @@ def evaluation_snapshot(
 def candidate(
     *,
     iteration: int = 1,
+    checkpoint_id: str | None = None,
     score: float = 0.52,
     parent_checkpoint_id: str | None = "ckpt-peak",
     iteration_cost_usd: float = 5.0,
 ) -> CandidateObservation:
     return CandidateObservation(
-        checkpoint_id=f"ckpt-candidate-{iteration}",
+        checkpoint_id=(checkpoint_id or f"ckpt-candidate-{iteration}"),
         parent_checkpoint_id=parent_checkpoint_id,
         iteration=iteration,
         score=score,
@@ -258,6 +264,24 @@ def test_policy_records_are_deterministic_and_json_round_trippable() -> None:
         assert transition.from_dict(transition.to_dict()) == transition
     for snapshot in first.snapshots:
         assert snapshot.from_dict(snapshot.to_dict()) == snapshot
+
+
+def test_record_ids_include_candidate_identity() -> None:
+    policy = RSIDecisionPolicy(limits())
+    current = replace(evaluation_snapshot(), candidate_checkpoint_id=None)
+    first = policy.evaluate(
+        current,
+        candidate(checkpoint_id="ckpt-candidate-a"),
+    )
+    second = policy.evaluate(
+        current,
+        candidate(checkpoint_id="ckpt-candidate-b"),
+    )
+
+    assert first.decisions[0].decision_id != second.decisions[0].decision_id
+    assert first.transitions[0].transition_id != second.transitions[0].transition_id
+    assert first.snapshots[0].snapshot_id != second.snapshots[0].snapshot_id
+    assert first.transitions[0].idempotency_key != second.transitions[0].idempotency_key
 
 
 def test_policy_limits_reject_invalid_boundaries() -> None:
