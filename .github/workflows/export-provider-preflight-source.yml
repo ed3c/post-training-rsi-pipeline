@@ -1,0 +1,33 @@
+name: Export Provider Preflight Source
+
+on:
+  push:
+    branches:
+      - feat/provider-preflight
+    paths:
+      - .github/workflows/export-provider-preflight-source.yml
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/provider-preflight
+          fetch-depth: 0
+      - name: Archive exact branch source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar --exclude=.git -czf /tmp/provider-preflight-source.tar.gz .
+          git rev-parse HEAD >/tmp/provider-preflight-head.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: provider-preflight-exact-source
+          path: |
+            /tmp/provider-preflight-source.tar.gz
+            /tmp/provider-preflight-head.txt
+          retention-days: 1
