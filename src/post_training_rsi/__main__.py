@@ -7,6 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from .approval import ApprovalPolicy, ApprovalService, ApprovalStore, record_sha256
+from .audit import (
+    COEVOLUTION_STATUS_SCHEMA_VERSION,
+    CoEvolutionAuditError,
+    CoEvolutionAuditor,
+)
 from .config import PipelineConfig
 from .engine import build_default_engine
 from .lineage import (
@@ -53,6 +58,25 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
 
+    coevolve_status = subparsers.add_parser(
+        "coevolve-status",
+        help="read-only view of the durable Co-Evolution run and latest snapshot",
+    )
+    coevolve_status.add_argument("--expect-run-id", default=None)
+    coevolve_status.add_argument("--expect-config-sha256", default=None)
+
+    coevolve_audit = subparsers.add_parser(
+        "coevolve-audit",
+        help="run a read-only Co-Evolution evidence audit",
+    )
+    coevolve_audit.add_argument("--expect-run-id", default=None)
+    coevolve_audit.add_argument("--expect-config-sha256", default=None)
+    coevolve_audit.add_argument(
+        "--strict",
+        action="store_true",
+        help="return exit code 2 when the audit contains warnings",
+    )
+
     verify = subparsers.add_parser(
         "verify",
         help="verify a JSONL Dataset with the configured admission gates",
@@ -94,27 +118,54 @@ def main(argv: list[str] | None = None) -> int:
     workspace = args.workspace.resolve()
 
     if args.command == "demo":
-        result = build_default_engine(config, workspace=workspace).run()
-        _print_json(result.to_dict())
+        demo_result = build_default_engine(config, workspace=workspace).run()
+        _print_json(demo_result.to_dict())
         return 0
 
     if args.command == "rsi":
-        result = build_converged_rsi_controller(
+        rsi_result = build_converged_rsi_controller(
             config,
             workspace=workspace,
             run_id=args.run_id,
         ).run()
-        _print_json(result.to_dict())
+        _print_json(rsi_result.to_dict())
         return 0
 
     if args.command == "coevolve":
-        result = build_reference_coevolution_controller(
+        coevolution_result = build_reference_coevolution_controller(
             config,
             workspace=workspace,
             run_id=args.run_id,
         ).run()
-        _print_json(result.to_dict())
+        _print_json(coevolution_result.to_dict())
         return 0
+
+    if args.command == "coevolve-status":
+        try:
+            status = CoEvolutionAuditor(workspace).status(
+                expected_run_id=args.expect_run_id,
+                expected_config_sha256=args.expect_config_sha256,
+            )
+        except CoEvolutionAuditError as exc:
+            _print_json(
+                {
+                    "schema_version": COEVOLUTION_STATUS_SCHEMA_VERSION,
+                    "runtime_status": "ERROR",
+                    "error": str(exc),
+                }
+            )
+            return 2
+        _print_json(status.to_dict())
+        return 0
+
+    if args.command == "coevolve-audit":
+        audit_report = CoEvolutionAuditor(workspace).audit(
+            strict=args.strict,
+            expected_run_id=args.expect_run_id,
+            expected_config_sha256=args.expect_config_sha256,
+        )
+        _print_json(audit_report.to_dict())
+        return audit_report.exit_code
 
     if args.command == "verify":
         _print_json(
