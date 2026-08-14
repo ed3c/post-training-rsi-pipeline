@@ -33,7 +33,7 @@ def test_architecture_manifest_has_exact_top_level_contract() -> None:
     }
     assert value["schema_version"] == "post-training-rsi.architecture-manifest/v1"
     assert value["repository"] == "ed3c/post-training-rsi-pipeline"
-    assert value["branch"] == "feat/coevolution-convergence"
+    assert value["branch"] == "feat/coevolution-audit-recovery"
 
 
 def test_manifest_read_order_and_owned_paths_exist() -> None:
@@ -62,8 +62,7 @@ def test_manifest_read_order_and_owned_paths_exist() -> None:
         path = entry["path"]
         assert isinstance(path, str)
         assert (ROOT / path).exists(), path
-        for field in ("owner",):
-            assert isinstance(entry[field], str) and entry[field]
+        assert isinstance(entry["owner"], str) and entry["owner"]
         for field in ("states", "inputs", "outputs", "evidence", "must_not_own"):
             items = entry[field]
             assert isinstance(items, list)
@@ -125,7 +124,7 @@ def test_manifest_pr_graph_is_complete_acyclic_and_matches_stack() -> None:
     value = _load()
     graph = value["pr_graph"]
     assert isinstance(graph, list)
-    assert [entry["pr"] for entry in graph] == list(range(1, 12))
+    assert [entry["pr"] for entry in graph] == list(range(1, 13))
 
     by_pr = {entry["pr"]: entry for entry in graph}
     for entry in graph:
@@ -138,15 +137,15 @@ def test_manifest_pr_graph_is_complete_acyclic_and_matches_stack() -> None:
             assert parent < entry["pr"]
 
     chain: list[int] = []
-    current: int | None = 11
+    current: int | None = 12
     while current is not None:
         assert current not in chain
         chain.append(current)
         current = by_pr[current]["parent_pr"]
-    assert chain == [11, 10, 9, 8, 7, 3, 2, 1]
+    assert chain == [12, 11, 10, 9, 8, 7, 3, 2, 1]
 
     stack = (ROOT / "docs/stacked-pr-plan.md").read_text(encoding="utf-8")
-    for pr in range(7, 12):
+    for pr in range(7, 13):
         assert f"PR #{pr}" in stack or f"#{pr}" in stack
 
 
@@ -154,6 +153,7 @@ def test_manifest_validation_files_and_non_claims_are_present() -> None:
     value = _load()
     validation = value["validation_index"]
     assert isinstance(validation, list)
+    assert validation
     for path in validation:
         assert isinstance(path, str)
         assert (ROOT / path).is_file(), path
