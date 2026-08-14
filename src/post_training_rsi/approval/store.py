@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 from collections.abc import Callable, Mapping
+from datetime import datetime
 from pathlib import Path
 from typing import TypeVar
 
@@ -63,28 +64,7 @@ class ApprovalStore:
         decision: ApprovalDecision,
     ) -> ApprovalDecision:
         request = self.load_request(decision.request_id)
-        expected_request_sha256 = record_sha256(request.to_dict())
-        if decision.request_sha256 != expected_request_sha256:
-            raise ApprovalIntegrityError("decision request_sha256 mismatch")
-        for field_name in (
-            "run_id",
-            "iteration",
-            "subject_type",
-            "subject_id",
-            "requested_action",
-        ):
-            if getattr(decision, field_name) != getattr(request, field_name):
-                raise ApprovalIntegrityError(
-                    f"decision {field_name} does not match request"
-                )
-        if decision.decided_at < request.requested_at:
-            raise ApprovalIntegrityError(
-                "decision timestamp precedes request timestamp"
-            )
-        if request.expires_at is not None and decision.decided_at > request.expires_at:
-            raise ApprovalIntegrityError(
-                "decision timestamp is later than request expiration"
-            )
+        self._validate_decision_links(request=request, decision=decision)
         _write_immutable(
             self.decision_path(decision.request_id),
             decision.to_dict(),
@@ -119,19 +99,7 @@ class ApprovalStore:
                 "decision request_id does not match its filename"
             )
         request = self.load_request(request_id)
-        if decision.request_sha256 != record_sha256(request.to_dict()):
-            raise ApprovalIntegrityError("stored decision request hash mismatch")
-        for field_name in (
-            "run_id",
-            "iteration",
-            "subject_type",
-            "subject_id",
-            "requested_action",
-        ):
-            if getattr(decision, field_name) != getattr(request, field_name):
-                raise ApprovalIntegrityError(
-                    f"stored decision {field_name} mismatch"
-                )
+        self._validate_decision_links(request=request, decision=decision)
         return decision
 
     def has_request(self, request_id: str) -> bool:
@@ -176,6 +144,39 @@ class ApprovalStore:
         expected_uri = self.sample_path(request.request_id).as_uri()
         if request.sample_uri != expected_uri:
             raise ApprovalIntegrityError("request sample_uri mismatch")
+
+    @staticmethod
+    def _validate_decision_links(
+        *,
+        request: ApprovalRequest,
+        decision: ApprovalDecision,
+    ) -> None:
+        expected_request_sha256 = record_sha256(request.to_dict())
+        if decision.request_sha256 != expected_request_sha256:
+            raise ApprovalIntegrityError("decision request_sha256 mismatch")
+        for field_name in (
+            "run_id",
+            "iteration",
+            "subject_type",
+            "subject_id",
+            "requested_action",
+        ):
+            if getattr(decision, field_name) != getattr(request, field_name):
+                raise ApprovalIntegrityError(
+                    f"decision {field_name} does not match request"
+                )
+        decided_at = _parse_timestamp(decision.decided_at)
+        requested_at = _parse_timestamp(request.requested_at)
+        if decided_at < requested_at:
+            raise ApprovalIntegrityError(
+                "decision timestamp precedes request timestamp"
+            )
+        if request.expires_at is not None and (
+            decided_at > _parse_timestamp(request.expires_at)
+        ):
+            raise ApprovalIntegrityError(
+                "decision timestamp is later than request expiration"
+            )
 
 
 def record_sha256(value: Mapping[str, object]) -> str:
@@ -257,6 +258,10 @@ def _read_record(
         raise ApprovalIntegrityError(
             f"approval record violates its schema: {path}"
         ) from exc
+
+
+def _parse_timestamp(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 def _fsync_directory(path: Path) -> None:
