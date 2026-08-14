@@ -20,6 +20,7 @@ class SafetyClassifier(Protocol):
 class RuleSafetyClassifier:
     prompt_injection_patterns: tuple[str, ...] = (
         "ignore previous instructions",
+        "ignore all previous instructions",
         "reveal the system prompt",
         "print your hidden prompt",
         "developer message",
