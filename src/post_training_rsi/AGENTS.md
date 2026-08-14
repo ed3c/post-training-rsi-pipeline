@@ -1,6 +1,6 @@
 # AGENTS.md — `src/post_training_rsi/`
 
-This file narrows the root [`AGENTS.md`](../../AGENTS.md) for control-plane source code. Root policy remains authoritative.
+This file narrows the root [`AGENTS.md`](../../AGENTS.md) for control-plane and orchestration source code. Root policy remains authoritative.
 
 ## Read before editing
 
@@ -9,8 +9,9 @@ This file narrows the root [`AGENTS.md`](../../AGENTS.md) for control-plane sour
 3. `../../docs/implementation-status.md`
 4. `../../docs/state-machine.md`
 5. `../../docs/control-plane-contracts.md`
-6. `../../docs/traceability-index.md`
-7. the tests covering the module being changed
+6. `../../docs/rsi-loop-policy.md`
+7. `../../docs/traceability-index.md`
+8. the tests covering the module being changed
 
 ## Dependency direction
 
@@ -19,7 +20,7 @@ config + control_plane + portable data records
         ↓
 provider-neutral protocols and deterministic components
         ↓
-state-machine controller/composition
+orchestration policy and convergence composition
         ↓
 CLI
 ```
@@ -32,8 +33,10 @@ CLI
 - `control_plane/enums.py`: the only shared state, event, stop-reason, action, subject, and evidence-kind taxonomy.
 - `control_plane/records.py`: versioned evidence, decision, state-snapshot, and transition records only.
 - `control_plane/validation.py`: strict schema and canonical JSON validation; no state adjacency policy.
+- `orchestration/rsi_policy.py`: pure candidate decision boundary—strict Peak comparison, parent invariant, reject/rollback, plateau, max-iteration, and budget outcomes.
+- future orchestration composition: diagnose/hypothesis/stage execution and adapter sequencing.
 - `models.py`: current data/result payloads; do not duplicate the control-plane taxonomy.
-- `engine.py` or future `orchestration/`: transition order, guards, stop reasons, promotion/rollback policy.
+- `engine.py`: current supported entry point; it does not yet use `RSIDecisionPolicy`.
 - `verification/`: deterministic record admission and quarantine.
 - `training/`: candidate artifact production.
 - `serving/`: deploy/readiness/teardown lifecycle.
@@ -51,17 +54,30 @@ The current schema is `post-training-rsi.control/v1`.
 - Do not serialize provider clients, file handles, credentials, benchmark bodies, or model weights into records.
 - Every `DecisionRecord` and `TransitionRecord` needs evidence IDs.
 - Terminal states need an explicit `StopReason`; non-terminal states must not carry one.
-- Adjacency and promotion thresholds belong to orchestration PRs, not the record package.
 - Incompatible changes require a new schema version and synchronized tests/docs.
+
+## RSI policy invariants
+
+- Input state is `EVALUATE` and iteration numbers match.
+- `active_checkpoint_id == peak_checkpoint_id`.
+- Candidate parent equals the current active accepted Checkpoint.
+- Candidate Checkpoint is not its own parent.
+- Promotion is strict: `candidate_score > peak_score + min_improvement`.
+- Equality at the boundary is rejection.
+- Rejected/rolled-back candidates do not replace active or Peak IDs.
+- Exact budget limits are allowed; crossing a limit aborts.
+- A final-iteration improvement is recorded before the run stops.
+- Plateau reason takes precedence over max-iteration when both arise from the same rejected trial.
+- Pure policy code emits records only; persistence and provider side effects remain outside it.
 
 ## Change requirements
 
 For a new or changed state/edge:
 
-- extend the shared typed state/event/stop reason only when an existing value cannot express the fact;
-- specify entry guard and exit evidence;
+- extend the shared typed State/Event/StopReason only when an existing value cannot express the fact;
+- specify entry guard, precedence, and exit evidence;
 - make retries bounded and idempotent;
-- add positive, negative, serialization, and rollback tests where applicable;
-- update `README.md`, `docs/state-machine.md`, `docs/control-plane-contracts.md`, `docs/implementation-status.md`, and `docs/traceability-index.md` in the same PR.
+- add positive, negative, boundary, serialization, parent-invariant, and rollback tests where applicable;
+- update `README.md`, `docs/state-machine.md`, `docs/control-plane-contracts.md`, `docs/rsi-loop-policy.md`, `docs/implementation-status.md`, and `docs/traceability-index.md` as applicable.
 
 Never preserve backward compatibility by silently accepting ambiguous evidence. Fail closed with an explicit reason.
