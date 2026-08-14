@@ -10,6 +10,55 @@ This repository turns the source architecture into executable components, typed 
 
 Read [`AGENTS.md`](AGENTS.md) before changing code. The document index is in [`docs/README.md`](docs/README.md).
 
+## PR #12 current branch overlay
+
+Current branch: `feat/coevolution-audit-recovery`
+Current Draft PR: [#12](https://github.com/ed3c/post-training-rsi-pipeline/pull/12)
+
+The machine-readable source of current directory, State Machine, artifact, command, and PR ownership is [`docs/architecture-manifest.json`](docs/architecture-manifest.json). Where an older PR #7 paragraph below describes Co-Evolution as planned, this PR #12 overlay is the current branch truth.
+
+Supported deterministic local commands on this branch:
+
+```text
+`demo`
+`rsi`
+`verify`
+`audit`
+`approvals`
+`review`
+`coevolve`
+`coevolve-status`
+`coevolve-audit`
+```
+
+Co-Evolution composition and audit ownership:
+
+```text
+src/post_training_rsi/orchestration/coevolution.py
+  FREEZE_MODEL → MUTATE_HARNESS → HARVEST_TRACES
+  → TRAIN_MODEL → PROMOTE_MODEL / ROLLBACK_MODEL
+  → SLIM_HARNESS → next cycle or STOPPED
+
+src/post_training_rsi/audit/
+  durable Run/transaction/pointer/artifact graph
+  → read-only status
+  → PASS / WARN / FAIL integrity report
+  → no automatic repair or pointer mutation
+```
+
+Ordinary GitHub successor chain:
+
+```text
+PR #7  Durable recursive RSI
+└── PR #8   Harness outer loop
+    └── PR #9   Observable Trace harvesting
+        └── PR #10  Model inner loop
+            └── PR #11  Co-Evolution convergence
+                └── PR #12  Read-only audit and recovery boundary
+```
+
+Git Town is not configured. The graph is documentation, not executable Git Town metadata.
+
 ## Current integration truth
 
 Current integration branch: `feat/rsi-convergence`  

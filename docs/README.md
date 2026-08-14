@@ -96,3 +96,12 @@ closest scoped AGENTS.md     # ownership changes
 ```
 
 Documentation must identify the exact branch and commit that supports a claim. Target diagrams must be labeled target, not current.
+
+## PR #12 current audit boundary
+
+- [`architecture-manifest.json`](architecture-manifest.json) — machine-readable current command, State Machine, directory, artifact, validation, and PR graph contract.
+- [`integration-contracts.md`](integration-contracts.md) — provider-neutral handoff and identity propagation rules.
+- [`coevolution-convergence.md`](coevolution-convergence.md) — supported deterministic `coevolve` reference runtime.
+- [`coevolution-audit-recovery.md`](coevolution-audit-recovery.md) — read-only `coevolve-status` and `coevolve-audit`, strict exit semantics, and human recovery playbook.
+
+Current branch commands include `demo`, `rsi`, `verify`, `audit`, `approvals`, `review`, `coevolve`, `coevolve-status`, and `coevolve-audit`.

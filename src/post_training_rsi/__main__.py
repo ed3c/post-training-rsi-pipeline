@@ -56,11 +56,19 @@ def _parser() -> argparse.ArgumentParser:
             "run or resume the deterministic durable Model/Harness "
             "Co-Evolution reference runtime"
         ),
+        description=(
+            "Run or resume the deterministic durable Model/Harness "
+            "Co-Evolution reference runtime."
+        ),
     )
 
     coevolve_status = subparsers.add_parser(
         "coevolve-status",
         help="read-only view of the durable Co-Evolution run and latest snapshot",
+        description=(
+            "Read-only view of the durable Co-Evolution Run pointer and latest "
+            "committed StateSnapshot."
+        ),
     )
     coevolve_status.add_argument("--expect-run-id", default=None)
     coevolve_status.add_argument("--expect-config-sha256", default=None)
@@ -68,6 +76,10 @@ def _parser() -> argparse.ArgumentParser:
     coevolve_audit = subparsers.add_parser(
         "coevolve-audit",
         help="run a read-only Co-Evolution evidence audit",
+        description=(
+            "Read-only integrity audit of the durable Co-Evolution evidence graph. "
+            "Only the explicit audit report may be written."
+        ),
     )
     coevolve_audit.add_argument("--expect-run-id", default=None)
     coevolve_audit.add_argument("--expect-config-sha256", default=None)

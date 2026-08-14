@@ -10,7 +10,7 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 from ..approval import ApprovalStore, record_sha256
-from ..control_plane import DecisionSubject, StateSnapshot
+from ..control_plane import StateSnapshot
 from ..harness.coevolution_store import CoEvolutionRunMetadata, CoEvolutionRunStore
 from ..harness.persistence import HarnessPointerStore, HarnessSnapshotStore
 from ..lineage import (
@@ -142,7 +142,7 @@ class CoEvolutionAuditor:
                 active,
                 strict=strict,
                 run_id=None,
-                write_report=write_report,
+                write_report=False,
             )
 
         checks.append(
@@ -721,7 +721,7 @@ class CoEvolutionAuditor:
                         AuditStatus.PASS,
                         request_id,
                         "Run pointer is bound to the exact immutable approval Request.",
-                        subject=metadata.pending_approval_subject,
+                        approval_subject=metadata.pending_approval_subject,
                         decision_available=store.has_decision(request_id),
                     )
                 )

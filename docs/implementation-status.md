@@ -172,3 +172,12 @@ The repository does not currently claim:
 - active Git Town automation.
 
 Any future claim must include exact commit, configuration, data/artifact hashes, environment, command, result, and known limitations.
+
+## PR #12 current status overlay
+
+Branch: `feat/coevolution-audit-recovery`
+Draft PR: PR #12
+
+Supported deterministic local commands: `demo`, `rsi`, `verify`, `audit`, `approvals`, `review`, `coevolve`, `coevolve-status`, `coevolve-audit`.
+
+`coevolve-status` is read-only. `coevolve-audit` verifies the durable Co-Evolution Run, control transactions, Peak Checkpoint, active Harness, Trace Dataset, approval, quarantine, artifact, and lock graph. It writes only `reports/coevolution-audit.json` when the workspace already exists. Missing workspaces, mismatched identities, malformed records, and failed integrity checks return exit code 2. Automatic recovery remains unsupported and human-owned.

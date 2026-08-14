@@ -4,8 +4,6 @@ import hashlib
 import json
 from pathlib import Path
 
-import pytest
-
 from post_training_rsi.approval import ApprovalStore
 from post_training_rsi.audit import AuditStatus, CoEvolutionAuditor
 from post_training_rsi.config import PipelineConfig

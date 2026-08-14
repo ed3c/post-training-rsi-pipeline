@@ -1,7 +1,7 @@
 {
   "schema_version": "post-training-rsi.architecture-manifest/v1",
   "repository": "ed3c/post-training-rsi-pipeline",
-  "branch": "feat/coevolution-convergence",
+  "branch": "feat/coevolution-audit-recovery",
   "runtime_status": {
     "supported_local_commands": [
       "demo",
@@ -10,7 +10,9 @@
       "audit",
       "approvals",
       "review",
-      "coevolve"
+      "coevolve",
+      "coevolve-status",
+      "coevolve-audit"
     ],
     "deterministic_reference_only": true,
     "production_ready": false,
@@ -28,7 +30,9 @@
     "docs/trace-harvesting.md",
     "docs/model-inner-loop.md",
     "docs/coevolution-convergence.md",
-    "docs/validation/coevolution-evidence-index.md"
+    "docs/validation/coevolution-evidence-index.md",
+    "docs/architecture-manifest.json",
+    "docs/coevolution-audit-recovery.md"
   ],
   "state_machines": {
     "rsi": {
@@ -83,114 +87,423 @@
       "path": "src/post_training_rsi/control_plane",
       "owner": "state-domain-contracts",
       "states": [],
-      "inputs": ["typed values", "strict JSON mappings"],
-      "outputs": ["EvidenceRecord", "DecisionRecord", "TransitionRecord", "StateSnapshot"],
-      "evidence": ["canonical JSON"],
-      "must_not_own": ["state adjacency", "score thresholds", "provider calls", "persistence"]
+      "inputs": [
+        "typed values",
+        "strict JSON mappings"
+      ],
+      "outputs": [
+        "EvidenceRecord",
+        "DecisionRecord",
+        "TransitionRecord",
+        "StateSnapshot"
+      ],
+      "evidence": [
+        "canonical JSON"
+      ],
+      "must_not_own": [
+        "state adjacency",
+        "score thresholds",
+        "provider calls",
+        "persistence"
+      ]
     },
     {
       "path": "src/post_training_rsi/orchestration",
       "owner": "composition-and-policy",
-      "states": ["DIAGNOSE", "EVALUATE", "FREEZE_MODEL", "STOPPED", "ABORTED"],
-      "inputs": ["PipelineConfig", "StateSnapshot", "evidence-backed observations"],
-      "outputs": ["policy records", "durable controller transitions", "run reports"],
-      "evidence": ["control transactions", "run summaries"],
-      "must_not_own": ["provider-specific SDK internals", "reviewer authentication"]
+      "states": [
+        "DIAGNOSE",
+        "EVALUATE",
+        "FREEZE_MODEL",
+        "STOPPED",
+        "ABORTED"
+      ],
+      "inputs": [
+        "PipelineConfig",
+        "StateSnapshot",
+        "evidence-backed observations"
+      ],
+      "outputs": [
+        "policy records",
+        "durable controller transitions",
+        "run reports"
+      ],
+      "evidence": [
+        "control/transactions/*.json",
+        "reports/*.json"
+      ],
+      "must_not_own": [
+        "provider-specific SDK internals",
+        "reviewer authentication"
+      ]
     },
     {
       "path": "src/post_training_rsi/verification",
       "owner": "data-admission",
-      "states": ["VERIFY", "VERIFIED", "QUARANTINED"],
-      "inputs": ["synthetic examples", "observable Trace examples", "benchmark corpus"],
-      "outputs": ["accepted Dataset", "quarantine Dataset", "filter audit"],
-      "evidence": ["VERIFICATION_AUDIT", "ACCEPTED_DATASET", "QUARANTINE_DATASET"],
-      "must_not_own": ["model promotion", "Harness acceptance"]
+      "states": [
+        "VERIFY",
+        "VERIFIED",
+        "QUARANTINED"
+      ],
+      "inputs": [
+        "synthetic examples",
+        "observable Trace examples",
+        "benchmark corpus"
+      ],
+      "outputs": [
+        "accepted Dataset",
+        "quarantine Dataset",
+        "filter audit"
+      ],
+      "evidence": [
+        "VERIFICATION_AUDIT",
+        "ACCEPTED_DATASET",
+        "QUARANTINE_DATASET"
+      ],
+      "must_not_own": [
+        "model promotion",
+        "Harness acceptance"
+      ]
     },
     {
       "path": "src/post_training_rsi/adapter_runtime",
       "owner": "provider-boundary",
-      "states": ["SYNTHESIZE", "TRAIN", "SERVE", "EVALUATE"],
-      "inputs": ["strict adapter config", "idempotent request", "bounded command"],
-      "outputs": ["validated adapter result", "artifact SHA-256", "endpoint and teardown evidence"],
-      "evidence": ["SYNTHESIS_MANIFEST", "TRAINING_RESULT", "SERVING_ENDPOINT", "SERVING_TEARDOWN", "EVALUATION_RESULT"],
-      "must_not_own": ["Peak policy", "approval authority", "pointer persistence"]
+      "states": [
+        "SYNTHESIZE",
+        "TRAIN",
+        "SERVE",
+        "EVALUATE"
+      ],
+      "inputs": [
+        "strict adapter config",
+        "idempotent request",
+        "bounded command"
+      ],
+      "outputs": [
+        "validated adapter result",
+        "artifact SHA-256",
+        "endpoint and teardown evidence"
+      ],
+      "evidence": [
+        "SYNTHESIS_MANIFEST",
+        "TRAINING_RESULT",
+        "SERVING_ENDPOINT",
+        "SERVING_TEARDOWN",
+        "EVALUATION_RESULT"
+      ],
+      "must_not_own": [
+        "Peak policy",
+        "approval authority",
+        "pointer persistence"
+      ]
     },
     {
       "path": "src/post_training_rsi/approval",
       "owner": "hitl-authority",
-      "states": ["DATA_REVIEW_PENDING", "MODEL_REVIEW_PENDING", "HARNESS_REVIEW_PENDING"],
-      "inputs": ["content-addressed review Request", "authorized reviewer Decision"],
-      "outputs": ["immutable Request", "immutable Decision", "approval evidence"],
-      "evidence": ["APPROVAL_REQUEST", "APPROVAL_DECISION"],
-      "must_not_own": ["quality thresholds", "provider execution", "Peak mutation"]
+      "states": [
+        "DATA_REVIEW_PENDING",
+        "MODEL_REVIEW_PENDING",
+        "HARNESS_REVIEW_PENDING"
+      ],
+      "inputs": [
+        "content-addressed review Request",
+        "authorized reviewer Decision"
+      ],
+      "outputs": [
+        "immutable Request",
+        "immutable Decision",
+        "approval evidence"
+      ],
+      "evidence": [
+        "APPROVAL_REQUEST",
+        "APPROVAL_DECISION"
+      ],
+      "must_not_own": [
+        "quality thresholds",
+        "provider execution",
+        "Peak mutation"
+      ]
     },
     {
       "path": "src/post_training_rsi/lineage",
       "owner": "transactional-lineage",
-      "states": ["PROMOTED", "REJECTED", "ROLLED_BACK", "QUARANTINED"],
-      "inputs": ["control records", "Checkpoint artifact", "LineageManifest", "expected previous pointer"],
-      "outputs": ["immutable control transaction", "Checkpoint bundle", "Peak pointer", "quarantine marker"],
-      "evidence": ["LINEAGE_MANIFEST", "PEAK_POINTER", "REGRESSION_AUDIT"],
-      "must_not_own": ["Candidate quality policy", "Harness mutation"]
+      "states": [
+        "PROMOTED",
+        "REJECTED",
+        "ROLLED_BACK",
+        "QUARANTINED"
+      ],
+      "inputs": [
+        "control records",
+        "Checkpoint artifact",
+        "LineageManifest",
+        "expected previous pointer"
+      ],
+      "outputs": [
+        "immutable control transaction",
+        "Checkpoint bundle",
+        "Peak pointer",
+        "quarantine marker"
+      ],
+      "evidence": [
+        "LINEAGE_MANIFEST",
+        "PEAK_POINTER",
+        "REGRESSION_AUDIT"
+      ],
+      "must_not_own": [
+        "Candidate quality policy",
+        "Harness mutation"
+      ]
     },
     {
       "path": "src/post_training_rsi/harness/outer_loop",
       "owner": "harness-search-policy",
-      "states": ["FREEZE_MODEL", "MUTATE_HARNESS", "VALIDATE_HARNESS", "EVALUATE_HARNESS", "ACCEPT_HARNESS", "REJECT_HARNESS", "HARVEST_TRACES"],
-      "inputs": ["frozen accepted model", "active Harness", "task evidence"],
-      "outputs": ["Harness Candidate", "validation", "benchmark", "policy handoff"],
-      "evidence": ["HARNESS_SNAPSHOT", "VERIFICATION_AUDIT", "EVALUATION_RESULT"],
-      "must_not_own": ["model training", "active pointer persistence", "hidden reasoning"]
+      "states": [
+        "FREEZE_MODEL",
+        "MUTATE_HARNESS",
+        "VALIDATE_HARNESS",
+        "EVALUATE_HARNESS",
+        "ACCEPT_HARNESS",
+        "REJECT_HARNESS",
+        "HARVEST_TRACES"
+      ],
+      "inputs": [
+        "frozen accepted model",
+        "active Harness",
+        "task evidence"
+      ],
+      "outputs": [
+        "Harness Candidate",
+        "validation",
+        "benchmark",
+        "policy handoff"
+      ],
+      "evidence": [
+        "HARNESS_SNAPSHOT",
+        "VERIFICATION_AUDIT",
+        "EVALUATION_RESULT"
+      ],
+      "must_not_own": [
+        "model training",
+        "active pointer persistence",
+        "hidden reasoning"
+      ]
     },
     {
       "path": "src/post_training_rsi/harness/trace_harvesting",
       "owner": "observable-trace-middle-loop",
-      "states": ["HARVEST_TRACES", "VERIFY_TRACES", "QUARANTINED", "TRAIN_MODEL"],
-      "inputs": ["successful observable trajectories", "frozen model and Harness lineage"],
-      "outputs": ["content-addressed Trace batch", "verified Trace Dataset", "training handoff"],
-      "evidence": ["TRACE_DATASET", "VERIFICATION_AUDIT", "QUARANTINE_DATASET"],
-      "must_not_own": ["chain-of-thought", "model weights", "Dataset approval"]
+      "states": [
+        "HARVEST_TRACES",
+        "VERIFY_TRACES",
+        "QUARANTINED",
+        "TRAIN_MODEL"
+      ],
+      "inputs": [
+        "successful observable trajectories",
+        "frozen model and Harness lineage"
+      ],
+      "outputs": [
+        "content-addressed Trace batch",
+        "verified Trace Dataset",
+        "training handoff"
+      ],
+      "evidence": [
+        "TRACE_DATASET",
+        "VERIFICATION_AUDIT",
+        "QUARANTINE_DATASET"
+      ],
+      "must_not_own": [
+        "chain-of-thought",
+        "model weights",
+        "Dataset approval"
+      ]
     },
     {
       "path": "src/post_training_rsi/harness/model_inner_loop",
       "owner": "model-inner-policy",
-      "states": ["TRAIN_MODEL", "EVALUATE_MODEL", "MODEL_REVIEW_PENDING", "PROMOTE_MODEL", "ROLLBACK_MODEL", "SLIM_HARNESS", "FREEZE_MODEL"],
-      "inputs": ["verified Trace Dataset", "accepted parent model", "trainer/deployer/evaluator/teardown"],
-      "outputs": ["Candidate artifact", "execution evidence", "promotion or rollback handoff"],
-      "evidence": ["TRAINING_RESULT", "CHECKPOINT", "SERVING_ENDPOINT", "EVALUATION_RESULT", "SERVING_TEARDOWN"],
-      "must_not_own": ["Peak CAS", "Harness slimming implementation", "reviewer identity"]
+      "states": [
+        "TRAIN_MODEL",
+        "EVALUATE_MODEL",
+        "MODEL_REVIEW_PENDING",
+        "PROMOTE_MODEL",
+        "ROLLBACK_MODEL",
+        "SLIM_HARNESS",
+        "FREEZE_MODEL"
+      ],
+      "inputs": [
+        "verified Trace Dataset",
+        "accepted parent model",
+        "trainer/deployer/evaluator/teardown"
+      ],
+      "outputs": [
+        "Candidate artifact",
+        "execution evidence",
+        "promotion or rollback handoff"
+      ],
+      "evidence": [
+        "TRAINING_RESULT",
+        "CHECKPOINT",
+        "SERVING_ENDPOINT",
+        "EVALUATION_RESULT",
+        "SERVING_TEARDOWN"
+      ],
+      "must_not_own": [
+        "Peak CAS",
+        "Harness slimming implementation",
+        "reviewer identity"
+      ]
     },
     {
       "path": "src/post_training_rsi/harness/persistence.py",
       "owner": "harness-persistence",
-      "states": ["ACCEPT_HARNESS", "SLIM_HARNESS"],
-      "inputs": ["HarnessSpec", "committed ACCEPT Decision", "expected previous Harness"],
-      "outputs": ["immutable Harness snapshot", "active Harness pointer", "history"],
-      "evidence": ["HARNESS_SNAPSHOT"],
-      "must_not_own": ["Harness benchmark policy", "model promotion"]
+      "states": [
+        "ACCEPT_HARNESS",
+        "SLIM_HARNESS"
+      ],
+      "inputs": [
+        "HarnessSpec",
+        "committed ACCEPT Decision",
+        "expected previous Harness"
+      ],
+      "outputs": [
+        "immutable Harness snapshot",
+        "active Harness pointer",
+        "history"
+      ],
+      "evidence": [
+        "HARNESS_SNAPSHOT"
+      ],
+      "must_not_own": [
+        "Harness benchmark policy",
+        "model promotion"
+      ]
     },
     {
       "path": "src/post_training_rsi/harness/coevolution_store.py",
       "owner": "durable-resume-pointer",
-      "states": ["FREEZE_MODEL", "MUTATE_HARNESS", "HARVEST_TRACES", "TRAIN_MODEL", "STOPPED", "ABORTED"],
-      "inputs": ["committed StateSnapshot", "Run ID", "PipelineConfig SHA-256"],
-      "outputs": ["atomic Run pointer", "immutable revision history"],
-      "evidence": ["coevolution/run.json", "coevolution/history/*.json"],
-      "must_not_own": ["policy thresholds", "provider calls"]
+      "states": [
+        "FREEZE_MODEL",
+        "MUTATE_HARNESS",
+        "HARVEST_TRACES",
+        "TRAIN_MODEL",
+        "STOPPED",
+        "ABORTED"
+      ],
+      "inputs": [
+        "committed StateSnapshot",
+        "Run ID",
+        "PipelineConfig SHA-256"
+      ],
+      "outputs": [
+        "atomic Run pointer",
+        "immutable revision history"
+      ],
+      "evidence": [
+        "coevolution/run.json",
+        "coevolution/history/*.json"
+      ],
+      "must_not_own": [
+        "policy thresholds",
+        "provider calls"
+      ]
+    },
+    {
+      "path": "src/post_training_rsi/audit",
+      "owner": "read-only-integrity-audit",
+      "states": [],
+      "inputs": [
+        "durable Co-Evolution Run pointer",
+        "immutable control and artifact graph"
+      ],
+      "outputs": [
+        "versioned status view",
+        "versioned integrity audit report"
+      ],
+      "evidence": [
+        "REGRESSION_AUDIT",
+        "reports/coevolution-audit.json"
+      ],
+      "must_not_own": [
+        "repair",
+        "resume",
+        "approval",
+        "pointer mutation",
+        "provider retry"
+      ]
     }
   ],
   "pr_graph": [
-    {"pr": 1, "branch": "docs/agent-state-machine-index", "parent_pr": null, "status": "draft"},
-    {"pr": 2, "branch": "feat/state-domain-contracts", "parent_pr": 1, "status": "draft"},
-    {"pr": 3, "branch": "feat/rsi-loop-policy", "parent_pr": 2, "status": "draft"},
-    {"pr": 4, "branch": "feat/lineage-runtime", "parent_pr": 2, "status": "draft"},
-    {"pr": 5, "branch": "feat/adapter-runtime", "parent_pr": 2, "status": "draft"},
-    {"pr": 6, "branch": "feat/hitl-approval", "parent_pr": 2, "status": "draft"},
-    {"pr": 7, "branch": "feat/rsi-convergence", "parent_pr": 3, "status": "draft"},
-    {"pr": 8, "branch": "feat/harness-outer-loop", "parent_pr": 7, "status": "draft"},
-    {"pr": 9, "branch": "feat/trace-harvesting", "parent_pr": 8, "status": "draft"},
-    {"pr": 10, "branch": "feat/model-inner-loop", "parent_pr": 9, "status": "draft"},
-    {"pr": 11, "branch": "feat/coevolution-convergence", "parent_pr": 10, "status": "draft"}
+    {
+      "pr": 1,
+      "branch": "docs/agent-state-machine-index",
+      "parent_pr": null,
+      "status": "draft"
+    },
+    {
+      "pr": 2,
+      "branch": "feat/state-domain-contracts",
+      "parent_pr": 1,
+      "status": "draft"
+    },
+    {
+      "pr": 3,
+      "branch": "feat/rsi-loop-policy",
+      "parent_pr": 2,
+      "status": "draft"
+    },
+    {
+      "pr": 4,
+      "branch": "feat/lineage-runtime",
+      "parent_pr": 2,
+      "status": "draft"
+    },
+    {
+      "pr": 5,
+      "branch": "feat/adapter-runtime",
+      "parent_pr": 2,
+      "status": "draft"
+    },
+    {
+      "pr": 6,
+      "branch": "feat/hitl-approval",
+      "parent_pr": 2,
+      "status": "draft"
+    },
+    {
+      "pr": 7,
+      "branch": "feat/rsi-convergence",
+      "parent_pr": 3,
+      "status": "draft"
+    },
+    {
+      "pr": 8,
+      "branch": "feat/harness-outer-loop",
+      "parent_pr": 7,
+      "status": "draft"
+    },
+    {
+      "pr": 9,
+      "branch": "feat/trace-harvesting",
+      "parent_pr": 8,
+      "status": "draft"
+    },
+    {
+      "pr": 10,
+      "branch": "feat/model-inner-loop",
+      "parent_pr": 9,
+      "status": "draft"
+    },
+    {
+      "pr": 11,
+      "branch": "feat/coevolution-convergence",
+      "parent_pr": 10,
+      "status": "draft"
+    },
+    {
+      "pr": 12,
+      "branch": "feat/coevolution-audit-recovery",
+      "parent_pr": 11,
+      "status": "draft"
+    }
   ],
   "artifact_index": [
     "coevolution/run.json",
@@ -218,14 +531,12 @@
     "approvals/requests/*.json",
     "approvals/decisions/*.json",
     "quarantine/*.json",
-    "reports/coevolution-run-summary.json"
+    "reports/coevolution-run-summary.json",
+    "reports/coevolution-audit.json"
   ],
   "validation_index": [
-    "docs/validation/harness-outer-loop-latest.json",
-    "docs/validation/trace-harvesting-latest.json",
-    "docs/validation/model-inner-loop-latest.json",
-    "docs/validation/coevolution-convergence-latest.json",
-    "docs/validation/coevolution-release-latest.json",
+    "docs/validation/README.md",
+    "docs/validation/NON_CLAIMS.md",
     "docs/validation/coevolution-evidence-index.md"
   ],
   "non_claims": [

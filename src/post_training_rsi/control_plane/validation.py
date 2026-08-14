@@ -36,7 +36,7 @@ def validate_id(value: str, field_name: str) -> str:
 def validate_text(value: str, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ControlContractError(f"{field_name} must be a non-empty string")
-    if any(ord(char) < 32 for char in value):
+    if any(ord(char) < 32 and char not in "\t\n\r" for char in value):
         raise ControlContractError(f"{field_name} must not contain control characters")
     return value
 

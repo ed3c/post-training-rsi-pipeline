@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, TypeAlias
@@ -1094,6 +1095,22 @@ class CoEvolutionController:
         metadata: CoEvolutionRunMetadata,
         current: StateSnapshot,
     ) -> None:
+        current_metadata = dict(current.metadata)
+        for key, expected in (
+            ("active_model_score", metadata.active_model_score),
+            ("active_harness_score", metadata.active_harness_score),
+        ):
+            value = current_metadata.get(key)
+            if value is not None and (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or float(value) != expected
+            ):
+                raise RuntimeError(
+                    f"Snapshot metadata.{key} does not match durable Run metadata"
+                )
+            current_metadata[key] = expected
+        current = replace(current, metadata=current_metadata)
         dataset_id = _metadata_str(current, "trace_dataset_id")
         dataset_path = _metadata_str(current, "trace_dataset_path")
         dataset_sha256 = _metadata_str(current, "trace_dataset_sha256")
@@ -1147,17 +1164,44 @@ class CoEvolutionController:
                 cycle=current.cycle,
             ),
         )
-        policy = self._model_policy()
-        training_evidence = tuple(
-            replace(
-                evidence,
-                iteration=current.iteration,
-            )
-            for evidence in (
-                execution.evidence.training,
-                execution.evidence.checkpoint,
-            )
+        candidate_path = (
+            self.workspace
+            / "model-candidates"
+            / f"{execution.bundle.candidate.checkpoint_id}.json"
         )
+        _write_immutable_or_equal(
+            candidate_path,
+            _json_bytes(execution.bundle.candidate.to_dict()),
+        )
+        policy = self._model_policy()
+        candidate_evidence_ids = execution.bundle.candidate.evidence_ids
+        training_templates = (
+            execution.evidence.training,
+            execution.evidence.checkpoint,
+        )
+        training_evidence_items: list[EvidenceRecord] = []
+        for index, template in enumerate(training_templates):
+            evidence_id = (
+                candidate_evidence_ids[index]
+                if index < len(candidate_evidence_ids)
+                else template.evidence_id
+            )
+            training_evidence_items.append(
+                replace(
+                    template,
+                    evidence_id=evidence_id,
+                    iteration=current.iteration,
+                )
+            )
+        for evidence_id in candidate_evidence_ids[len(training_templates) :]:
+            training_evidence_items.append(
+                replace(
+                    execution.evidence.training,
+                    evidence_id=evidence_id,
+                    iteration=current.iteration,
+                )
+            )
+        training_evidence = tuple(training_evidence_items)
         trained_step = policy.training_completed(
             current,
             execution.bundle.candidate,
@@ -1167,17 +1211,27 @@ class CoEvolutionController:
             evidence=training_evidence,
             label="model-trained",
         )
-        evaluation_evidence = tuple(
-            replace(
-                evidence,
-                iteration=trained_step.final_snapshot.iteration,
-            )
-            for evidence in (
-                execution.evidence.serving,
+        evaluation_evidence_items: list[EvidenceRecord] = []
+        for template, evidence_ids in (
+            (execution.evidence.serving, execution.bundle.serving.evidence_ids),
+            (
                 execution.evidence.evaluation,
+                execution.bundle.evaluation.evidence_ids,
+            ),
+            (
                 execution.evidence.teardown,
-            )
-        )
+                execution.bundle.teardown.evidence_ids,
+            ),
+        ):
+            for evidence_id in evidence_ids:
+                evaluation_evidence_items.append(
+                    replace(
+                        template,
+                        evidence_id=evidence_id,
+                        iteration=trained_step.final_snapshot.iteration,
+                    )
+                )
+        evaluation_evidence = tuple(evaluation_evidence_items)
         evaluated_step = policy.evaluation_completed(
             trained_step.final_snapshot,
             execution.bundle.evaluation,
@@ -1371,15 +1425,16 @@ class CoEvolutionController:
                 f"{marker.subject_type.value.lower()}-{marker.subject_id}.json"
             )
         )
+        handoff_iteration = 0
         rollback_evidence = EvidenceRecord(
             evidence_id=_record_id(
                 "ev-model-rollback-commit",
                 self.run_id,
-                current.iteration,
+                handoff_iteration,
                 decision.subject_id,
             ),
             run_id=self.run_id,
-            iteration=current.iteration,
+            iteration=handoff_iteration,
             kind=EvidenceKind.REGRESSION_AUDIT,
             producer="coevolution-controller",
             uri=marker_path.resolve().as_uri(),
@@ -1420,6 +1475,8 @@ class CoEvolutionController:
         active_bundle = self.harness_snapshot_store.load(
             metadata.active_harness_id
         )
+        next_cycle = current.cycle + 1
+        handoff_iteration = 0
         base_prompt = active_bundle.spec.system_prompt.split("\n\n", 1)[0]
         payload: dict[str, JSONValue] = {
             "parent_harness_id": active_bundle.spec.harness_id,
@@ -1461,11 +1518,11 @@ class CoEvolutionController:
                 evidence_id=_record_id(
                     "ev-harness-slim",
                     self.run_id,
-                    current.iteration,
+                    handoff_iteration,
                     slim.harness_id,
                 ),
                 run_id=self.run_id,
-                iteration=current.iteration,
+                iteration=handoff_iteration,
                 kind=EvidenceKind.HARNESS_SNAPSHOT,
                 producer="coevolution-controller",
                 uri=slim_path.resolve().as_uri(),
@@ -1481,11 +1538,11 @@ class CoEvolutionController:
                 evidence_id=_record_id(
                     "ev-harness-slim-evaluation",
                     self.run_id,
-                    current.iteration,
+                    handoff_iteration,
                     slim.harness_id,
                 ),
                 run_id=self.run_id,
-                iteration=current.iteration,
+                iteration=handoff_iteration,
                 kind=EvidenceKind.EVALUATION_RESULT,
                 producer="coevolution-controller",
                 uri=f"artifact://harness-slim-evaluations/{slim.harness_id}.json",
@@ -1502,11 +1559,11 @@ class CoEvolutionController:
             decision_id=_record_id(
                 "decision-harness-slim",
                 self.run_id,
-                current.iteration,
+                handoff_iteration,
                 slim.harness_id,
             ),
             run_id=self.run_id,
-            iteration=current.iteration,
+            iteration=handoff_iteration,
             subject_type=DecisionSubject.HARNESS,
             subject_id=slim.harness_id,
             action=DecisionAction.ACCEPT,
@@ -1521,17 +1578,19 @@ class CoEvolutionController:
                 "previous_harness_id": metadata.active_harness_id,
                 "prompt_chars_before": len(active_bundle.spec.system_prompt),
                 "prompt_chars_after": len(base_prompt),
+                "cycle": next_cycle,
+                "source_cycle": current.cycle,
             },
         )
         transition = TransitionRecord(
             transition_id=_record_id(
                 "transition-harness-slim",
                 self.run_id,
-                current.iteration,
+                handoff_iteration,
                 slim.harness_id,
             ),
             run_id=self.run_id,
-            iteration=current.iteration,
+            iteration=handoff_iteration,
             from_state=ControlState.SLIM_HARNESS,
             event=ControlEvent.HARNESS_SLIMMED,
             to_state=ControlState.FREEZE_MODEL,
@@ -1539,22 +1598,21 @@ class CoEvolutionController:
             idempotency_key=_record_id(
                 "idempotency-harness-slim",
                 self.run_id,
-                current.iteration,
+                handoff_iteration,
                 slim.harness_id,
             ),
             decision_id=decision.decision_id,
             evidence_ids=evidence_ids,
         )
-        next_cycle = current.cycle + 1
         snapshot = StateSnapshot(
             snapshot_id=_record_id(
                 "snapshot-harness-slim",
                 self.run_id,
-                current.iteration,
+                handoff_iteration,
                 slim.harness_id,
             ),
             run_id=self.run_id,
-            iteration=0,
+            iteration=handoff_iteration,
             cycle=next_cycle,
             state=ControlState.FREEZE_MODEL,
             entered_at=decision.created_at,
@@ -1579,7 +1637,7 @@ class CoEvolutionController:
         bundle = self.harness_snapshot_store.commit(
             slim,
             run_id=self.run_id,
-            cycle=current.cycle,
+            cycle=next_cycle,
             score=slim_score,
             status="ACTIVE",
             control_transaction_id=transaction_id,
@@ -1590,7 +1648,7 @@ class CoEvolutionController:
                 run_id=self.run_id,
                 harness_id=slim.harness_id,
                 previous_harness_id=metadata.active_harness_id,
-                cycle=current.cycle,
+                cycle=next_cycle,
                 score=slim_score,
                 decision_id=decision.decision_id,
                 control_transaction_id=transaction_id,
@@ -1619,15 +1677,16 @@ class CoEvolutionController:
         current: StateSnapshot,
     ) -> None:
         timestamp = self.clock.at(cycle=current.cycle, ordinal=20)
+        outer_iteration = 1
         evidence = EvidenceRecord(
             evidence_id=_record_id(
                 "ev-cycle-freeze",
                 self.run_id,
-                current.iteration,
+                outer_iteration,
                 f"cycle-{current.cycle}",
             ),
             run_id=self.run_id,
-            iteration=current.iteration,
+            iteration=outer_iteration,
             kind=EvidenceKind.PEAK_POINTER,
             producer="coevolution-controller",
             uri=(self.workspace / "peak_checkpoint.json").resolve().as_uri(),
@@ -1643,11 +1702,11 @@ class CoEvolutionController:
             decision_id=_record_id(
                 "decision-begin-cycle",
                 self.run_id,
-                current.iteration,
+                outer_iteration,
                 f"cycle-{current.cycle}",
             ),
             run_id=self.run_id,
-            iteration=1,
+            iteration=outer_iteration,
             subject_type=DecisionSubject.RUN,
             subject_id=self.run_id,
             action=DecisionAction.CONTINUE,
@@ -1661,11 +1720,11 @@ class CoEvolutionController:
             transition_id=_record_id(
                 "transition-begin-cycle",
                 self.run_id,
-                current.iteration,
+                outer_iteration,
                 f"cycle-{current.cycle}",
             ),
             run_id=self.run_id,
-            iteration=1,
+            iteration=outer_iteration,
             from_state=ControlState.FREEZE_MODEL,
             event=ControlEvent.NEXT_ITERATION_REQUESTED,
             to_state=ControlState.MUTATE_HARNESS,
@@ -1673,7 +1732,7 @@ class CoEvolutionController:
             idempotency_key=_record_id(
                 "idempotency-begin-cycle",
                 self.run_id,
-                current.iteration,
+                outer_iteration,
                 f"cycle-{current.cycle}",
             ),
             decision_id=decision.decision_id,
@@ -1683,11 +1742,11 @@ class CoEvolutionController:
             snapshot_id=_record_id(
                 "snapshot-begin-cycle",
                 self.run_id,
-                current.iteration,
+                outer_iteration,
                 f"cycle-{current.cycle}",
             ),
             run_id=self.run_id,
-            iteration=1,
+            iteration=outer_iteration,
             cycle=current.cycle,
             state=ControlState.MUTATE_HARNESS,
             entered_at=timestamp,
@@ -1987,10 +2046,11 @@ class CoEvolutionController:
         subject = metadata.pending_approval_subject
         if request_id is None or request_sha256 is None or subject is None:
             raise RuntimeError("pending approval metadata is incomplete")
-        status = self.approval_service.status(
-            request_id,
-            as_of=self.clock.at(cycle=current.cycle, ordinal=9_500),
-        )
+        as_of = self.clock.at(cycle=current.cycle, ordinal=9_500)
+        if self.approval_service.store.has_decision(request_id):
+            recorded_decision = self.approval_service.store.load_decision(request_id)
+            as_of = max(as_of, recorded_decision.decided_at)
+        status = self.approval_service.status(request_id, as_of=as_of)
         if status.state in {ApprovalState.PENDING, ApprovalState.EXPIRED}:
             return False
         request = self.approval_service.store.load_request(request_id)
@@ -2176,14 +2236,7 @@ class CoEvolutionController:
             )
             self._update_run_from_step(cleared, step, committed)
             if step.final_snapshot.state is ControlState.PROMOTE_MODEL:
-                artifact_path = _metadata_str(
-                    current,
-                    "artifact_path",
-                )
-                candidate = self._candidate_from_snapshot(
-                    current,
-                    artifact_path=artifact_path,
-                )
+                candidate = self._candidate_from_snapshot(current)
                 self._commit_model_promotion(
                     self.run_store.load(),
                     step.final_snapshot,
@@ -2209,32 +2262,37 @@ class CoEvolutionController:
     def _candidate_from_snapshot(
         self,
         snapshot: StateSnapshot,
-        *,
-        artifact_path: str,
     ) -> Any:
         from ..harness.model_inner_loop import ModelCandidateArtifact
 
-        return ModelCandidateArtifact(
-            checkpoint_id=snapshot.candidate_checkpoint_id or "",
-            request_id=_metadata_str(snapshot, "training_request_id"),
-            run_id=snapshot.run_id,
-            cycle=snapshot.cycle,
-            model_id=_metadata_str(snapshot, "candidate_model_id"),
-            parent_checkpoint_id=_metadata_str(snapshot, "parent_checkpoint_id"),
-            dataset_id=_metadata_str(snapshot, "trace_dataset_id"),
-            dataset_sha256=_metadata_str(snapshot, "trace_dataset_sha256"),
-            artifact_path=artifact_path,
-            artifact_sha256=_metadata_str(snapshot, "artifact_sha256"),
-            training_loss=float(snapshot.metadata.get("training_loss", 0.0)),
-            training_cost_usd=float(
-                snapshot.metadata.get("training_cost_usd", 0.0)
-            ),
-            trained_at=snapshot.entered_at,
-            evidence_ids=snapshot.evidence_ids,
-            metadata={
-                "expected_reference_score": snapshot.candidate_score or 0.0,
-            },
+        checkpoint_id = snapshot.candidate_checkpoint_id
+        if checkpoint_id is None:
+            raise RuntimeError("model review Snapshot has no Candidate checkpoint")
+        candidate_path = (
+            self.workspace / "model-candidates" / f"{checkpoint_id}.json"
         )
+        try:
+            payload = json.loads(candidate_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError(
+                f"cannot load immutable model Candidate {checkpoint_id}"
+            ) from exc
+        if not isinstance(payload, Mapping):
+            raise RuntimeError("model Candidate record must be a JSON object")
+        candidate = ModelCandidateArtifact.from_dict(payload)
+        if candidate.checkpoint_id != checkpoint_id:
+            raise RuntimeError("model Candidate record identity mismatch")
+        if candidate.run_id != snapshot.run_id or candidate.cycle != snapshot.cycle:
+            raise RuntimeError("model Candidate record Run/cycle mismatch")
+        if candidate.parent_checkpoint_id != snapshot.active_checkpoint_id:
+            raise RuntimeError("model Candidate parent changed during approval pause")
+        expected_artifact_sha = snapshot.metadata.get("artifact_sha256")
+        if expected_artifact_sha != candidate.artifact_sha256:
+            raise RuntimeError("model Candidate artifact SHA-256 changed during approval")
+        expected_dataset_sha = snapshot.metadata.get("trace_dataset_sha256")
+        if expected_dataset_sha != candidate.dataset_sha256:
+            raise RuntimeError("model Candidate Dataset SHA-256 changed during approval")
+        return candidate
 
     def _outer_policy(self) -> HarnessOuterPolicy:
         return HarnessOuterPolicy(
