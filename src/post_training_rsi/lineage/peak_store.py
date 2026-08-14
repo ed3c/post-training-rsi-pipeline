@@ -202,6 +202,15 @@ class PeakPointerStore:
                 raise LineageConflictError(
                     "PeakPointer.previous_checkpoint_id does not match the expected Peak"
                 )
+            if current is not None:
+                if pointer.iteration < current.iteration:
+                    raise LineageConflictError(
+                        "Peak iteration cannot move backwards"
+                    )
+                if pointer.score <= current.score:
+                    raise LineageConflictError(
+                        "Peak score must increase strictly"
+                    )
             self._verify_links(pointer)
 
             history_path = self.history_root / (

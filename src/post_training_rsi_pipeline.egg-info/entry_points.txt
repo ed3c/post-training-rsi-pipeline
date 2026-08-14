@@ -1,0 +1,2 @@
+[console_scripts]
+post-training-rsi = post_training_rsi.__main__:main

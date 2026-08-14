@@ -141,6 +141,18 @@ class CheckpointBundle:
     lineage_manifest: LineageManifest
     control_transaction: ControlTransactionManifest
 
+    @property
+    def checkpoint(self) -> dict[str, JSONValue]:
+        return self.checkpoint_payload
+
+    @property
+    def lineage(self) -> LineageManifest:
+        return self.lineage_manifest
+
+    @property
+    def manifest_sha256(self) -> str:
+        return self.manifest.manifest_sha256
+
 
 class CheckpointBundleStore:
     """Atomically commit Checkpoint metadata, lineage, and artifact integrity."""

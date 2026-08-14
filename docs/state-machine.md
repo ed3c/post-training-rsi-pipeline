@@ -1,387 +1,352 @@
-# State-machine ownership and data flow
+# State Machine contract
 
-This document distinguishes four layers:
+Status: **supported on Draft PR #7 branch; Co-Evolution remains target**  
+Schema: `post-training-rsi.control/v1`  
+Validated code head before the latest documentation commits: `ac334be8411f45196d2522c885ff893cb2d44fda`
 
-1. the **current executable State Machine** reached by the supported `demo` command;
-2. the **versioned control-plane contract** introduced by PR #2;
-3. the **implemented but unwired Candidate decision boundary** introduced by PR #3;
-4. the **target RSI and Model/Harness Co-Evolution State Machines** derived from the source architecture.
+This document defines State ownership, transition guards, evidence requirements, terminal precedence, and resume behavior. It does not grant provider, approval, or persistence modules authority to make quality decisions.
 
-A State name, record schema, or isolated policy test is not proof that the supported runtime reaches that State.
+## 1. Record model
 
-## 1. Current executable State Machine
-
-```mermaid
-stateDiagram-v2
-    [*] --> CONFIG_LOADED
-    CONFIG_LOADED --> SYNTHESIZED: DeterministicGenerator.generate
-    SYNTHESIZED --> BUDGET_CHARGED: CostLedger.charge
-    BUDGET_CHARGED --> VERIFIED: VerificationPipeline.verify
-    VERIFIED --> DATA_REJECTED: accepted set is empty
-    VERIFIED --> TRAINED: accepted records exist
-    TRAINED --> DEPLOYED: ServingAdapter.deploy
-    DEPLOYED --> EVALUATED: Evaluator.evaluate
-    EVALUATED --> COMPLETED: result summary written
-    DATA_REJECTED --> COMPLETED
-    COMPLETED --> [*]
-```
-
-### Current transition table
-
-| State | Owner | Input | Guard | Output/evidence | Missing behavior |
-|---|---|---|---|---|---|
-| `CONFIG_LOADED` | `config.py`, `__main__.py` | JSON config/defaults | numeric validation | `PipelineConfig` | unknown config fields are not rejected |
-| `SYNTHESIZED` | `generation.py` | hard-coded hypothesis/count/iteration | none | `GenerationBatch`, synthesis manifest | production Teacher is not selected |
-| `BUDGET_CHARGED` | `cost.py` | generation estimate | per-iteration and total caps | ledger event | trainer/evaluator/serving costs are not composed |
-| `VERIFIED` | `verification/pipeline.py` | synthetic records | exact, lexical, semantic, benchmark, safety, AST checks | accepted, quarantine, one `VerificationRecord` per input | configured minimum acceptance rate is not enforced by `RSIEngine` |
-| `DATA_REJECTED` | `engine.py` | empty accepted set | `not verification.accepted` | legacy `IterationOutcome` | no retry, hypothesis update, or schema-v1 terminal reason |
-| `TRAINED` | `training/adapter.py` | accepted JSONL/hash | non-empty Dataset | Checkpoint artifact, `TrainingResult` | parent is always `None` in supported runtime |
-| `DEPLOYED` | `serving/adapter.py` | Checkpoint | adapter readiness | endpoint string | endpoint is not supplied to evaluator; no teardown |
-| `EVALUATED` | `evaluation/adapter.py` | Checkpoint | finite score assumed | metrics and failure traces | supported runtime does not call strict Peak policy |
-| `COMPLETED` | `engine.py`, `lineage/store.py` | one outcome | none | run summary | schema-v1 records, manifest, and Peak pointer are not persisted |
-
-The reachable engine still uses legacy dataclasses and free-form string statuses.
-
-## 2. Versioned control-plane contract
-
-Status: **Contract only** in the supported runtime.
-
-`src/post_training_rsi/control_plane/` freezes the shared language used by later controllers, adapters, approvals, and lineage persistence:
-
-```mermaid
-flowchart LR
-    PS[Previous ControlState] --> TR[TransitionRecord]
-    EV[ControlEvent] --> TR
-    ER[EvidenceRecord IDs] --> TR
-    DR[DecisionRecord] --> TR
-    TR --> NS[Next StateSnapshot]
-    SR[StopReason] --> DR
-    SR --> NS
-```
-
-Schema:
+Every policy-relevant edge is represented by:
 
 ```text
-post-training-rsi.control/v1
+EvidenceRecord(s)
+  → DecisionRecord
+  → TransitionRecord
+  → StateSnapshot
+  → ControlTransactionManifest written last
 ```
 
-### Enum ownership
+Not every transition needs a human Decision, but every transition requires durable evidence IDs. A `DecisionRecord` owns the selected action and reason; a `TransitionRecord` owns the edge; a `StateSnapshot` owns the resulting serializable state.
 
-| Enum | Owns | Does not own |
-|---|---|---|
-| `ControlState` | exact current, target RSI, and target Co-Evolution State names | reachability or legal adjacency |
-| `ControlEvent` | facts that may request transitions | policy sufficiency or side effects |
-| `StopReason` | finite terminal taxonomy | free-form diagnosis |
-| `DecisionAction` | continue, request approval, accept, promote, reject, quarantine, rollback, stop, abort | thresholds and authority |
-| `DecisionSubject` | Run, Dataset, Checkpoint, Harness, Trace Batch, Serving Endpoint | storage location |
-| `EvidenceKind` | stable evidence categories | provider payload format |
+A file under `control/evidence`, `control/decisions`, `control/transitions`, or `control/snapshots` is not committed until a transaction manifest references and verifies it.
 
-### Record ownership
-
-| Record | Required content | Fail-closed rule |
-|---|---|---|
-| `EvidenceRecord` | producer, kind, URI, timestamp, optional SHA-256, JSON metadata | exact fields/schema/type; invalid ID/hash/time/JSON rejected |
-| `DecisionRecord` | subject, action, reason, evidence IDs, optional stop reason | at least one evidence ID; STOP/ABORT require a stop reason |
-| `StateSnapshot` | State, iteration/cycle, active/Candidate/Peak IDs, scores, counters, cost, evidence IDs | terminal States require stop reason; non-terminal States reject one |
-| `TransitionRecord` | previous State, Event, next State, idempotency key, Decision/evidence IDs | only START may omit previous State; every transition requires evidence |
-
-The contract rejects unknown fields, unsupported schemas, unsafe identifiers, duplicate evidence IDs, NaN/infinity, negative counters/costs, malformed timestamps, and non-JSON metadata. JSON is canonicalized for hash/replay comparison.
-
-The contract does not validate adjacency. Ownership is split across PR #3, PR-04/05/06, PR-07, and the later Co-Evolution PRs. See [`control-plane-contracts.md`](control-plane-contracts.md).
-
-## 3. Implemented Candidate decision boundary
-
-Status: **Implemented component / not composed into `RSIEngine`**.
-
-Entry point:
-
-```text
-src/post_training_rsi/orchestration/rsi_policy.py
-```
-
-Entry State and inputs:
-
-```text
-StateSnapshot(state=EVALUATE)
-CandidateObservation(
-  checkpoint_id,
-  parent_checkpoint_id,
-  iteration,
-  score,
-  iteration_cost_usd,
-  evaluated_at,
-  evidence_ids
-)
-RSIPolicyLimits(
-  max_iterations,
-  plateau_patience,
-  min_improvement,
-  regression_tolerance,
-  per_iteration_budget_usd,
-  total_budget_usd
-)
-```
-
-### Implemented State graph
-
-```mermaid
-stateDiagram-v2
-    EVALUATE --> ABORTED: per-iteration or total budget crossed
-    EVALUATE --> PROMOTED: score > Peak + min_improvement
-    EVALUATE --> ROLLED_BACK: regression > tolerance
-    EVALUATE --> REJECTED: no strict improvement and no severe regression
-    PROMOTED --> DIAGNOSE: max iterations not reached
-    PROMOTED --> STOPPED: max iterations reached
-    REJECTED --> DIAGNOSE: patience and iterations remain
-    REJECTED --> STOPPED: plateau reached
-    REJECTED --> STOPPED: max iterations reached
-```
-
-### Entry guards
-
-| Guard | Failure behavior |
-|---|---|
-| current State is `EVALUATE` | `PolicyInvariantError` |
-| Snapshot and Candidate iteration match | `PolicyInvariantError` |
-| `active_checkpoint_id == peak_checkpoint_id` | `PolicyInvariantError` |
-| Candidate parent equals active accepted Checkpoint | `PolicyInvariantError` |
-| Candidate ID matches Snapshot Candidate when supplied | `PolicyInvariantError` |
-| existing finite `peak_score` | `PolicyInvariantError` |
-| finite score/cost, safe IDs, timezone-aware timestamp, evidence IDs | input validation error |
-
-### Decision precedence
-
-The policy evaluates branches in this order:
-
-1. per-iteration budget crossing;
-2. total-budget crossing;
-3. strict Peak improvement;
-4. regression beyond tolerance;
-5. ordinary rejection;
-6. plateau stop after Candidate outcome;
-7. maximum-iteration stop after Candidate outcome;
-8. continue to the next `DIAGNOSE` iteration.
-
-When plateau and maximum iteration become true on the same rejected trial, `PLATEAU` is the terminal reason. This precedence is explicit and tested.
-
-### Strict Peak and parent rules
-
-```text
-candidate_score > peak_score + min_improvement
-candidate.parent_checkpoint_id == active_checkpoint_id
-active_checkpoint_id == peak_checkpoint_id
-```
-
-Equality at the score boundary is rejection. A rejected or rolled-back Candidate never changes active/Peak IDs. A valid final-iteration improvement first emits `PROMOTED`, updates Peak, then emits `STOPPED(MAX_ITERATIONS)`.
-
-### Output records per edge
-
-Each policy edge emits exactly one paired set:
-
-```text
-DecisionRecord
-TransitionRecord(decision_id=<paired Decision>)
-StateSnapshot(metadata.decision_id=<paired Decision>)
-```
-
-A promotion/rejection may then emit a second paired Run-level set for `CONTINUE` or `STOP`. Record IDs and idempotency keys include Run, iteration, target phase, record type, and Candidate identity. Replaying the same input yields the same records; different Candidates in the same iteration yield different IDs.
-
-### Implemented transition table
-
-| From | Event | To | Decision | StopReason | Active/Peak effect |
-|---|---|---|---|---|---|
-| `EVALUATE` | `BUDGET_EXCEEDED` | `ABORTED` | `ABORT` | per-iteration or total budget | unchanged |
-| `EVALUATE` | `CANDIDATE_IMPROVED` | `PROMOTED` | `PROMOTE` | none | Candidate becomes active Peak |
-| `EVALUATE` | `REGRESSION_DETECTED` | `ROLLED_BACK` | `ROLLBACK` | `REGRESSION_ROLLBACK` | previous Peak remains active |
-| `EVALUATE` | `CANDIDATE_NOT_IMPROVED` | `REJECTED` | `REJECT` | none | previous Peak remains active |
-| `PROMOTED` or `REJECTED` | `NEXT_ITERATION_REQUESTED` | `DIAGNOSE` | `CONTINUE` | none | accepted Peak preserved; Candidate working fields cleared |
-| `REJECTED` | `PLATEAU_REACHED` | `STOPPED` | `STOP` | `PLATEAU` | previous Peak retained |
-| `PROMOTED` or `REJECTED` | `MAX_ITERATIONS_REACHED` | `STOPPED` | `STOP` | `MAX_ITERATIONS` | current accepted Peak retained |
-
-The supported CLI does not reach this graph yet. PR-04 owns persistence; PR-05 owns upstream adapter evidence; PR-06 owns approval interruption; PR-07 owns supported composition. See [`rsi-loop-policy.md`](rsi-loop-policy.md).
-
-## 4. Target five-stage RSI State Machine
+## 2. Supported RSI state graph
 
 ```mermaid
 stateDiagram-v2
     [*] --> BOOT
-    BOOT --> DIAGNOSE
-    DIAGNOSE --> HYPOTHESIS
-    HYPOTHESIS --> SYNTHESIZE
-    SYNTHESIZE --> ABORTED: budget/provider circuit open
-    SYNTHESIZE --> VERIFY
-    VERIFY --> QUARANTINED: acceptance/diversity/safety gate fails
-    VERIFY --> DATA_REVIEW_PENDING: review enabled
-    VERIFY --> TRAIN: review disabled
-    DATA_REVIEW_PENDING --> TRAIN: approved
-    DATA_REVIEW_PENDING --> STOPPED: denied/pending/malformed
-    TRAIN --> SERVE
-    SERVE --> EVALUATE
-    EVALUATE --> DECIDE
-    DECIDE --> MODEL_REVIEW_PENDING: Candidate beats Peak and review enabled
-    DECIDE --> PROMOTED: Candidate beats Peak and review disabled
-    DECIDE --> REJECTED: Candidate does not beat Peak
-    MODEL_REVIEW_PENDING --> PROMOTED: approved
-    MODEL_REVIEW_PENDING --> REJECTED: denied/pending/malformed
-    PROMOTED --> DIAGNOSE: budget and iteration remain
-    REJECTED --> DIAGNOSE: patience remains
-    REJECTED --> ROLLED_BACK: regression exceeds tolerance
-    QUARANTINED --> DIAGNOSE: bounded retry allows
-    DIAGNOSE --> STOPPED: max iterations or plateau
-    ABORTED --> [*]
-    STOPPED --> [*]
+    BOOT --> DIAGNOSE: START / CONFIG_ACCEPTED
+    BOOT --> ABORTED: CONFIG_REJECTED
+
+    DIAGNOSE --> HYPOTHESIS: DIAGNOSIS_COMPLETED
+    HYPOTHESIS --> SYNTHESIZE: HYPOTHESIS_SELECTED
+    SYNTHESIZE --> VERIFY: SYNTHESIS_COMPLETED + BUDGET_CHARGE_ACCEPTED
+    SYNTHESIZE --> ABORTED: BUDGET_EXCEEDED or PROVIDER_CIRCUIT_OPEN
+
+    VERIFY --> QUARANTINED: DATASET_QUARANTINED / no admissible data
+    VERIFY --> DATA_REVIEW_PENDING: DATA_REVIEW_REQUESTED
+    VERIFY --> TRAIN: VERIFICATION_COMPLETED / review disabled
+
+    DATA_REVIEW_PENDING --> TRAIN: DATA_APPROVED
+    DATA_REVIEW_PENDING --> STOPPED: DATA_DENIED or authority not granted
+
+    TRAIN --> SERVE: TRAINING_COMPLETED + artifact integrity
+    TRAIN --> ABORTED: TRAINING_FAILED
+
+    SERVE --> EVALUATE: SERVING_READY
+    SERVE --> ABORTED: SERVING_FAILED
+
+    EVALUATE --> DECIDE: EVALUATION_COMPLETED
+    EVALUATE --> ABORTED: EVALUATION_FAILED
+
+    DECIDE --> MODEL_REVIEW_PENDING: MODEL_REVIEW_REQUESTED
+    DECIDE --> PROMOTED: CANDIDATE_IMPROVED / review disabled
+    DECIDE --> REJECTED: CANDIDATE_NOT_IMPROVED
+    DECIDE --> ROLLED_BACK: REGRESSION_DETECTED
+    DECIDE --> ABORTED: BUDGET_EXCEEDED
+
+    MODEL_REVIEW_PENDING --> PROMOTED: MODEL_APPROVED
+    MODEL_REVIEW_PENDING --> REJECTED: MODEL_DENIED or authority not granted
+
+    PROMOTED --> DIAGNOSE: NEXT_ITERATION_REQUESTED
+    REJECTED --> DIAGNOSE: NEXT_ITERATION_REQUESTED
+    PROMOTED --> STOPPED: MAX_ITERATIONS_REACHED
+    REJECTED --> STOPPED: PLATEAU_REACHED or MAX_ITERATIONS_REACHED
+
+    QUARANTINED --> [*]
     ROLLED_BACK --> [*]
+    STOPPED --> [*]
+    ABORTED --> [*]
 ```
 
-### Target State ownership
+Implementation may record intermediate component-specific facts, but it must not invent unsupported adjacency. A new edge requires code, tests, documentation, and traceability updates.
 
-| State | Intended owner | Required evidence |
-|---|---|---|
-| `DIAGNOSE` | orchestration + evaluator traces | diagnostic report, task-family regressions, active/Peak IDs |
-| `HYPOTHESIS` | orchestration policy | versioned hypothesis and Prompt hash |
-| `SYNTHESIZE` | `synthesis/` | Teacher model/API, request ID, Prompt hash, token/cost usage |
-| `VERIFY` | `verification/` | one immutable decision per input, metrics, reject reason |
-| `DATA_REVIEW_PENDING` | approval module | content-addressed request and deterministic sample |
-| `TRAIN` | `training/` | Dataset hash, parent ID, idempotency key, artifact hash, final loss |
-| `SERVE` | `serving/` | deployment/endpoint/readiness and teardown result |
-| `EVALUATE` | `evaluation/` | aggregate/task-family scores, failure traces, eval Run ID |
-| `DECIDE` | orchestration | Peak before/after, score delta, Decision reason, stop counters |
-| `PROMOTED` | orchestration + lineage | atomic Peak pointer and complete lineage |
-| `REJECTED` | orchestration + lineage | immutable reason; accepted parent unchanged |
-| `QUARANTINED` | verification + lineage | Dataset state and root-cause link |
-| `ROLLED_BACK` | orchestration + serving | rollback target, endpoint transition, audit report |
-| `STOPPED` / `ABORTED` | orchestration + cost | terminal reason and complete ledger snapshot |
+## 3. State ownership table
 
-The implemented PR #3 boundary is a subset of `EVALUATE`/`DECIDE` outcomes. Dataset review, Model review, provider circuit, and full stage composition remain outside it.
+| State | Entry owner | Required evidence | Exit authority |
+|---|---|---|---|
+| `BOOT` | CLI/composition root | config source/defaults, Run ID | strict config and Run metadata validation |
+| `DIAGNOSE` | converged orchestrator | previous scores/failures/Peak IDs | diagnosis completion |
+| `HYPOTHESIS` | converged orchestrator | versioned hypothesis record | selected hypothesis |
+| `SYNTHESIZE` | synthesis/adapter runtime | Teacher model/API/prompt hash, request/token/cost facts | successful bounded result and budget acceptance |
+| `VERIFY` | verification pipeline | raw Dataset, gate audit, accepted/quarantine hashes | admission result only |
+| `QUARANTINED` | decision + lineage marker | verification evidence and reason | terminal for that Dataset/Candidate path |
+| `DATA_REVIEW_PENDING` | approval service | exact Dataset subject/hash, sample, request | matching immutable human Decision |
+| `TRAIN` | trainer/adapter runtime | approved/allowed Dataset hash and parent Checkpoint | successful artifact + controller integrity |
+| `SERVE` | serving lifecycle | Checkpoint/artifact identity and deploy result | readiness or failure; teardown remains required |
+| `EVALUATE` | evaluator | exact endpoint/Checkpoint/benchmark identity | finite score and failure evidence |
+| `DECIDE` | RSI decision policy | EVALUATE Snapshot + CandidateObservation | promote/reject/rollback/abort/continue/stop records |
+| `MODEL_REVIEW_PENDING` | approval service | exact Checkpoint subject/hash, evaluation evidence | matching immutable human Decision |
+| `PROMOTED` | policy + lineage | committed `PROMOTE` Decision and verified bundle | Peak CAS, then next iteration or stop |
+| `REJECTED` | policy + lineage | committed `REJECT` Decision | Peak unchanged; marker + next iteration/stop |
+| `ROLLED_BACK` | policy + lineage | committed `ROLLBACK` Decision | accepted Peak remains active; terminal according to policy |
+| `STOPPED` | policy | explicit terminal Decision and StopReason | terminal |
+| `ABORTED` | composition/policy | failure/budget/circuit evidence and StopReason | terminal |
 
-## 5. Target Model/Harness Co-Evolution State Machine
+## 4. Transition guards
+
+### 4.1 BOOT and Run identity
+
+`BOOT → DIAGNOSE` requires:
+
+```text
+strict config validation passed
+Run ID is valid
+Run metadata absent and created atomically
+  OR existing Run metadata matches immutable config hash
+```
+
+A reused Run ID with a different immutable configuration fails closed. It does not create a new experiment under the old identity.
+
+### 4.2 Synthesis and budget
+
+`SYNTHESIZE → VERIFY` requires:
+
+```text
+bounded Teacher/generator result
+synthesis manifest
+request/token/cost evidence
+accepted cost charge
+provider circuit closed
+```
+
+Per-iteration and total budgets allow equality and reject only an actual crossing, subject to numeric epsilon rules in the policy.
+
+### 4.3 Verification admission
+
+`VERIFY → TRAIN` requires:
+
+```text
+at least one accepted record
+acceptance/diversity/safety/contamination policy satisfied
+accepted.jsonl written
+accepted Dataset SHA-256 computed from exact bytes
+Dataset review disabled or approved
+```
+
+`VerificationPipeline` may admit or quarantine data. It may not promote a model.
+
+### 4.4 Dataset review
+
+`DATA_REVIEW_PENDING → TRAIN` requires an Approval Decision matching:
+
+```text
+Request SHA-256
+Run ID
+iteration
+Subject type = DATASET
+Subject ID
+current Subject SHA-256
+requested action
+reviewer role
+review deadline
+```
+
+Missing, pending, denied, expired, malformed, unauthorized, stale-hash, or cross-Subject review does not grant authority.
+
+### 4.5 Training and artifact integrity
+
+`TRAIN → SERVE` requires:
+
+```text
+Trainer result echoes Model, parent Checkpoint, Dataset hash, and iteration
+artifact path exists
+path is allowed and not a symlink
+controller recomputes file/directory SHA-256
+optional worker hash matches
+Checkpoint candidate metadata is finite and valid
+```
+
+A Worker path or hash is evidence to verify, not a trust anchor.
+
+### 4.6 Serving and evaluation
+
+`SERVE → EVALUATE` requires endpoint readiness. The exact endpoint returned by deployment is passed to evaluation.
+
+Teardown is attempted in `finally` after deployment, including evaluation failure. If evaluation and teardown both fail, preserve the evaluation failure and attach teardown failure evidence/note; if only teardown fails, teardown failure propagates.
+
+`EVALUATE → DECIDE` requires a finite score inside the configured evaluator range plus durable evaluation evidence. Missing or non-finite score cannot be converted to an ordinary rejection.
+
+### 4.7 Candidate decision
+
+The policy input must satisfy:
+
+```text
+current.state == EVALUATE
+current.iteration == candidate.iteration
+current.active_checkpoint_id == current.peak_checkpoint_id
+candidate.parent_checkpoint_id == current.active_checkpoint_id
+current.candidate_checkpoint_id is null or equals candidate.checkpoint_id
+current.peak_score is finite
+candidate.evidence_ids is non-empty
+```
+
+Decision precedence:
+
+```text
+1. per-iteration budget crossed → ABORTED
+2. total budget crossed         → ABORTED
+3. strict improvement           → PROMOTED candidate edge
+4. regression beyond tolerance  → ROLLED_BACK
+5. otherwise                    → REJECTED
+6. after promote/reject:
+   a. plateau reached           → STOPPED(PLATEAU)
+   b. max iterations reached    → STOPPED(MAX_ITERATIONS)
+   c. otherwise                 → DIAGNOSE(next iteration)
+```
+
+Promotion is strict:
+
+```text
+candidate_score > peak_score + min_improvement
+```
+
+Equality rejects.
+
+### 4.8 Checkpoint review
+
+A qualified Candidate requiring review enters `MODEL_REVIEW_PENDING`. Promotion authority requires an exact immutable Decision for the Candidate Checkpoint. A Dataset approval cannot authorize a Checkpoint promotion.
+
+Pending/denied/expired/invalid review leaves the historical Peak unchanged.
+
+### 4.9 Transaction and Peak update
+
+The policy records and their evidence are committed before Peak mutation.
+
+Peak compare-and-swap requires:
+
+```text
+current pointer == expected_previous_checkpoint_id
+pointer.previous_checkpoint_id == expected_previous_checkpoint_id
+new Decision is committed
+Decision.action == PROMOTE
+Decision subject == new Checkpoint
+Checkpoint bundle exists and verifies
+bundle/model/score/Run/iteration match pointer
+new iteration >= current iteration
+new score > current score
+```
+
+Exact replay is idempotent. A stale writer or different content conflicts.
+
+## 5. Terminal states and StopReason
+
+Terminal `StateSnapshot`s require a `StopReason`. Non-terminal Snapshots must not carry one.
+
+| Terminal state | Typical StopReason |
+|---|---|
+| `STOPPED` | `MAX_ITERATIONS`, `PLATEAU`, `APPROVAL_NOT_GRANTED`, `COMPLETED` where applicable |
+| `ABORTED` | budget exceeded, provider circuit, training/serving/evaluation failure, invalid evidence, internal error |
+| `ROLLED_BACK` | `REGRESSION_ROLLBACK` |
+| `COMPLETED` | compatibility/legacy path only; recursive policy uses explicit stop semantics |
+
+Free-form prose belongs in `DecisionRecord.reason`; machine routing uses `StopReason`.
+
+## 6. Resume State Machine
+
+```mermaid
+flowchart TD
+    A[CLI rsi with workspace + Run ID] --> M{Run metadata exists?}
+    M -- no --> N[Create immutable Run metadata]
+    M -- yes --> C{Config hash matches?}
+    C -- no --> F[Fail closed]
+    C -- yes --> L[Load verified control transactions]
+    N --> L
+    L --> S[Find latest resumable StateSnapshot]
+    S --> P[Load and verify Peak pointer and bundle]
+    P --> R{Pending approval state?}
+    R -- yes --> Q[Reload exact Request/Decision]
+    Q -->|approved| X[Continue guarded edge]
+    Q -->|pending/denied/invalid| W[Return fail-closed/pending result]
+    R -- no --> X
+    X --> I[Continue next legal State]
+```
+
+Resume must not:
+
+- infer approval from a missing file;
+- use an uncommitted orphan record;
+- ignore a Peak/bundle hash mismatch;
+- reuse a different configuration under the same Run ID;
+- repeat an external side effect without idempotency validation;
+- silently skip a required teardown.
+
+## 7. Data rejection, quarantine, and rollback
+
+These are different semantics:
+
+- **Data rejection/quarantine** — Dataset failed admission; no training should start.
+- **Candidate rejection** — Candidate evaluated but did not strictly beat Peak; Peak remains active.
+- **Rollback** — Candidate regressed beyond tolerance; policy emits rollback and accepted Peak remains active.
+- **Human denial** — authority was not granted; this does not rewrite the score policy or imply a technical regression.
+
+Each durable marker must match the committed Decision's Run, iteration, Subject, reason code, and evidence IDs.
+
+## 8. Target Model/Harness Co-Evolution State Machine
+
+The following remains target behavior and is not reachable from a supported CLI:
 
 ```mermaid
 stateDiagram-v2
     [*] --> FREEZE_MODEL
     FREEZE_MODEL --> MUTATE_HARNESS
     MUTATE_HARNESS --> VALIDATE_HARNESS
-    VALIDATE_HARNESS --> REJECT_HARNESS: static/policy check fails
-    VALIDATE_HARNESS --> EVALUATE_HARNESS
-    EVALUATE_HARNESS --> HARNESS_REVIEW_PENDING: improves and review enabled
-    EVALUATE_HARNESS --> ACCEPT_HARNESS: improves and review disabled
-    EVALUATE_HARNESS --> MUTATE_HARNESS: no improvement, patience remains
-    EVALUATE_HARNESS --> HARVEST_TRACES: plateau
+    VALIDATE_HARNESS --> EVALUATE_HARNESS: valid
+    VALIDATE_HARNESS --> REJECT_HARNESS: invalid
+    EVALUATE_HARNESS --> HARNESS_REVIEW_PENDING: qualified + review required
+    EVALUATE_HARNESS --> ACCEPT_HARNESS: qualified + review disabled
+    EVALUATE_HARNESS --> REJECT_HARNESS: no improvement
     HARNESS_REVIEW_PENDING --> ACCEPT_HARNESS: approved
-    HARNESS_REVIEW_PENDING --> REJECT_HARNESS: denied/pending/malformed
-    ACCEPT_HARNESS --> MUTATE_HARNESS
-    REJECT_HARNESS --> MUTATE_HARNESS
+    HARNESS_REVIEW_PENDING --> REJECT_HARNESS: denied/pending/invalid
+    ACCEPT_HARNESS --> MUTATE_HARNESS: outer-loop budget remains
+    REJECT_HARNESS --> MUTATE_HARNESS: patience remains
+    REJECT_HARNESS --> HARVEST_TRACES: plateau
     HARVEST_TRACES --> VERIFY_TRACES
-    VERIFY_TRACES --> HARVEST_TRACES: target not reached
-    VERIFY_TRACES --> TRAIN_MODEL: target reached
+    VERIFY_TRACES --> TRAIN_MODEL: target traces reached
     TRAIN_MODEL --> EVALUATE_MODEL
-    EVALUATE_MODEL --> PROMOTE_MODEL: beats active model
-    EVALUATE_MODEL --> ROLLBACK_MODEL: does not beat active model
+    EVALUATE_MODEL --> PROMOTE_MODEL: improves
+    EVALUATE_MODEL --> ROLLBACK_MODEL: not improved/regressed
     PROMOTE_MODEL --> SLIM_HARNESS
     SLIM_HARNESS --> FREEZE_MODEL
     ROLLBACK_MODEL --> FREEZE_MODEL
 ```
 
-The control vocabulary contains these names, but the repository does not implement this outer/middle/inner loop. `src/post_training_rsi/harness/` remains a placeholder.
-
-## 6. Directory-to-State map
+Planned owners:
 
 ```text
-configs/                                      BOOT policy inputs
-src/post_training_rsi/config.py               CONFIG_LOADED / CONFIG_REJECTED
-src/post_training_rsi/control_plane/          shared State/Event/Stop/Decision/Evidence representation
-src/post_training_rsi/orchestration/          pure adjacency and policy components
-src/post_training_rsi/orchestration/rsi_policy.py
-                                              EVALUATE → PROMOTED/REJECTED/ROLLED_BACK/ABORTED
-                                              PROMOTED/REJECTED → DIAGNOSE/STOPPED
-src/post_training_rsi/models.py               current data/result payloads
-src/post_training_rsi/engine.py               current supported transition coordinator
-src/post_training_rsi/generation.py           current SYNTHESIZED fixture
-src/post_training_rsi/synthesis/              target SYNTHESIZE provider boundary
-src/post_training_rsi/verification/           VERIFIED / QUARANTINED
-src/post_training_rsi/training/               TRAINED
-src/post_training_rsi/serving/                DEPLOYED; target SERVE + TEARDOWN
-src/post_training_rsi/evaluation/             EVALUATED and failure evidence
-src/post_training_rsi/lineage/                current artifacts; target control/Peak persistence
-src/post_training_rsi/harness/                target MUTATE/HARVEST States
-tests/test_control_plane.py                   schema serialization and fail-closed evidence
-tests/test_rsi_policy.py                      Peak/parent/rollback/stop/idempotency evidence
-tests/                                        current runtime and adapter assertions
-docs/                                         current/component/target traceability
+PR #8  Harness outer loop
+PR #9  trace harvesting middle loop
+PR #10 model inner loop
+PR #11 Co-Evolution convergence and CLI
 ```
 
-`control_plane/` owns representation. `orchestration/` owns policy. Neither owns provider SDK internals or persistence side effects.
+A future Co-Evolution implementation must reuse the same evidence, approval, artifact-integrity, cost, lineage, and fail-closed principles.
 
-## 7. End-to-end data and record flow
+## 9. Structural update rule
 
-### Current supported flow
+Changing any State, Event, StopReason, edge, guard, precedence, evidence dependency, resume rule, or owner requires synchronized updates to:
 
-```mermaid
-flowchart LR
-    C[PipelineConfig] --> G[DeterministicGenerator]
-    G -->|GenerationBatch + cost| L[CostLedger]
-    G --> V[VerificationPipeline]
-    V -->|raw/accepted/quarantine/audit| S[ArtifactStore iteration bundle]
-    V -->|accepted records + Dataset hash| T[Trainer]
-    T --> P[Checkpoint artifact]
-    P --> D[ServingAdapter deploy]
-    P --> E[Evaluator]
-    E --> R[RSIRunResult report]
+```text
+implementation
+tests
+README.md
+AGENTS.md or closest scoped AGENTS.md
+docs/implementation-status.md
+docs/state-machine.md
+docs/rsi-convergence.md
+relevant component contract
+docs/traceability-index.md
+docs/stacked-pr-plan.md when delivery ownership changes
 ```
-
-### Implemented Candidate policy flow
-
-```mermaid
-flowchart TD
-    ES[EVALUATE StateSnapshot] --> P[RSIDecisionPolicy]
-    CO[CandidateObservation] --> P
-    EE[Evaluation Evidence IDs] --> CO
-    CE[Cost Evidence IDs] --> CO
-    P --> D[DecisionRecord]
-    P --> T[TransitionRecord]
-    P --> S[StateSnapshot]
-    D -. PR-04 persistence .-> L[Lineage Store]
-    T -. PR-04 persistence .-> L
-    S -. PR-04 persistence .-> L
-    S -. PR-07 composition .-> N[Next RSI stage]
-```
-
-### Target complete evidence flow
-
-```mermaid
-flowchart TD
-    H[Failure traces + active/Peak model] --> Y[Diagnostic + hypothesis]
-    Y --> TP[Versioned Teacher Prompt]
-    TP --> SYN[Teacher synthesis]
-    SYN --> RAW[raw.jsonl + synthesis_manifest]
-    RAW --> VER[verification decisions]
-    VER --> ACC[accepted.jsonl + Dataset SHA-256]
-    VER --> Q[quarantine.jsonl + reasons]
-    ACC --> REV[optional Dataset approval]
-    REV --> TRAIN[training job]
-    TRAIN --> CKPT[Checkpoint + artifact SHA-256]
-    CKPT --> SERVE[ephemeral endpoint]
-    SERVE --> EVAL[benchmark + failure traces]
-    EVAL --> DEC[Peak/rollback/stop Decision]
-    DEC --> MAN[LineageManifest + control records]
-    MAN --> PEAK[atomic Peak pointer]
-    EVAL --> H
-```
-
-## 8. Cross-State invariants
-
-- Every synthesized input receives exactly one verification record.
-- Dataset hash covers the exact accepted bytes used by training.
-- Active accepted Checkpoint equals historical Peak unless an explicit migration/rollback transaction says otherwise.
-- Candidate parent is the active accepted Checkpoint.
-- Rejected and rolled-back Candidates never become parents.
-- Promotion is strict: `candidate_score > peak_score + min_improvement` plus any required approval.
-- A final-iteration valid promotion is preserved before stopping.
-- Exact budget limits are allowed; crossed limits abort with evidence.
-- Quarantine, rejection, rollback, and stop are durable facts, not deletion.
-- Every cross-module Decision/transition references durable evidence IDs.
-- Adapter retries are bounded and idempotent.
-- Serving teardown runs even when evaluation fails.
-- Shared semantics use `post-training-rsi.control/v1`; sibling modules do not create alternate taxonomies.
-- Unknown fields, unsupported schemas, malformed evidence, and missing approvals fail closed.
-- A contract value or isolated component is not runtime reachability evidence.

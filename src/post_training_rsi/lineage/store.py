@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from ..models import SyntheticExample, TrainingResult, VerificationBatch
-from .manifest import LineageManifest
+from .manifest import LineageManifest, detect_git_commit
 
 
 class ArtifactStore:
@@ -19,6 +19,17 @@ class ArtifactStore:
         for directory in ("iterations", "checkpoints", "harness", "reports", "quarantine"):
             (self.root / directory).mkdir(exist_ok=True)
 
+    def iteration_dir(self, iteration: int) -> Path:
+        if isinstance(iteration, bool) or not isinstance(iteration, int) or iteration < 0:
+            raise ValueError("iteration must be a non-negative integer")
+        path = self.root / "iterations" / f"iter-{iteration:03d}"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @staticmethod
+    def git_commit_hash() -> str:
+        return detect_git_commit()
+
     def write_iteration_bundle(
         self,
         *,
@@ -27,8 +38,7 @@ class ArtifactStore:
         verification: VerificationBatch,
         synthesis_manifest: dict[str, Any],
     ) -> tuple[Path, str]:
-        iteration_dir = self.root / "iterations" / f"iter-{iteration:03d}"
-        iteration_dir.mkdir(parents=True, exist_ok=True)
+        iteration_dir = self.iteration_dir(iteration)
         raw_path = iteration_dir / "raw.jsonl"
         accepted_path = iteration_dir / "accepted.jsonl"
         quarantine_path = iteration_dir / "quarantine.jsonl"
@@ -119,20 +129,22 @@ class ArtifactStore:
         return digest.hexdigest()
 
     @staticmethod
-    def write_json(path: str | Path, payload: dict[str, Any]) -> None:
+    def write_json(path: str | Path, payload: dict[str, Any]) -> Path:
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         serialized = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
         _atomic_write(target, serialized)
+        return target
 
     @staticmethod
-    def write_jsonl(path: str | Path, rows: Iterable[dict[str, Any]]) -> None:
+    def write_jsonl(path: str | Path, rows: Iterable[dict[str, Any]]) -> Path:
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         serialized = "".join(
             json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows
         )
         _atomic_write(target, serialized)
+        return target
 
     @staticmethod
     def read_json(path: str | Path) -> dict[str, Any]:

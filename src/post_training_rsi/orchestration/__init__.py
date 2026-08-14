@@ -1,5 +1,10 @@
-"""Provider-neutral orchestration policy components."""
+"""Provider-neutral orchestration policy and converged RSI components."""
 
+from .converged import (
+    ConvergedRSIController,
+    ConvergedRSIResult,
+    build_converged_rsi_controller,
+)
 from .rsi_policy import (
     CandidateObservation,
     PolicyInvariantError,
@@ -10,8 +15,11 @@ from .rsi_policy import (
 
 __all__ = [
     "CandidateObservation",
+    "ConvergedRSIController",
+    "ConvergedRSIResult",
     "PolicyInvariantError",
     "RSIDecisionPolicy",
     "RSIPolicyLimits",
     "RSIPolicyStep",
+    "build_converged_rsi_controller",
 ]

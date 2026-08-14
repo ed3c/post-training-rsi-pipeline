@@ -1,0 +1,22 @@
+{
+  "branch": "feat/example",
+  "gates": [
+    "compileall",
+    "ruff",
+    "mypy",
+    "pytest-coverage",
+    "cli-smoke"
+  ],
+  "non_claims": [
+    "production-readiness"
+  ],
+  "python_versions": [
+    "3.11",
+    "3.12"
+  ],
+  "status": "PASS",
+  "tested_commit": "0123456789abcdef0123456789abcdef01234567",
+  "tested_tree": "89abcdef0123456789abcdef0123456789abcdef",
+  "validated_at": "2026-08-14T00:00:00Z",
+  "workflow_run_id": "00000000000"
+}

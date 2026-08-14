@@ -95,6 +95,8 @@ class StoredRecordRef:
 
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> StoredRecordRef:
+        if any(not isinstance(key, str) for key in value):
+            raise ControlContractError("stored record keys must be strings")
         fields = {"record_type", "record_id", "relative_path", "sha256"}
         if set(value) != fields:
             raise ControlContractError(
@@ -226,6 +228,17 @@ class ControlRecordStore:
                 raise ControlContractError(
                     f"record {record_id} belongs to run {record.run_id}, not {run_id}"
                 )
+            if isinstance(record, StateSnapshot):
+                if record.iteration not in {iteration, iteration + 1}:
+                    raise ControlContractError(
+                        f"snapshot {record_id} iteration {record.iteration} does not match "
+                        f"transaction iteration {iteration} or its next iteration"
+                    )
+            elif record.iteration != iteration:
+                raise ControlContractError(
+                    f"record {record_id} iteration {record.iteration} does not match "
+                    f"transaction iteration {iteration}"
+                )
             key = (record_type, record_id)
             if key in record_payloads:
                 raise ControlContractError(
@@ -270,11 +283,16 @@ class ControlRecordStore:
                     )
                 return self.load_transaction(transaction_id)
 
-            committed = self._committed_index()
-            incoming = set(record_payloads)
+            committed = self._committed_records()
+            incoming = {
+                key: value[0]
+                for key, value in record_payloads.items()
+            }
+            available = dict(committed)
+            available.update(incoming)
             self._validate_dependencies(
                 (item[0] for item in record_payloads.values()),
-                committed | incoming,
+                available,
             )
 
             for ref in manifest.records:
@@ -375,32 +393,70 @@ class ControlRecordStore:
         return record
 
     def _committed_index(self) -> set[tuple[str, str]]:
-        committed: set[tuple[str, str]] = set()
+        return set(self._committed_records())
+
+    def _committed_records(self) -> dict[tuple[str, str], ControlRecord]:
+        committed: dict[tuple[str, str], ControlRecord] = {}
         for path in sorted(self.transactions_root.glob("*.json")):
             manifest = ControlTransactionManifest.from_dict(read_json_object(path))
             for ref in manifest.records:
                 verify_file_hash(self.control_root / ref.relative_path, ref.sha256)
-                committed.add((ref.record_type, ref.record_id))
+                record = self._load_record_file(ref.record_type, ref.record_id)
+                key = (ref.record_type, ref.record_id)
+                existing = committed.get(key)
+                if existing is not None and existing != record:
+                    raise LineageIntegrityError(
+                        f"committed control record identity has conflicting content: "
+                        f"{ref.record_type}/{ref.record_id}"
+                    )
+                committed[key] = record
         return committed
 
     @staticmethod
     def _validate_dependencies(
         records: Iterable[ControlRecord],
-        available: set[tuple[str, str]],
+        available: Mapping[tuple[str, str], ControlRecord],
     ) -> None:
         for record in records:
             if isinstance(record, EvidenceRecord):
                 continue
             for evidence_id in record.evidence_ids:
-                if (EvidenceRecord.RECORD_TYPE, evidence_id) not in available:
+                evidence = available.get((EvidenceRecord.RECORD_TYPE, evidence_id))
+                if evidence is None:
                     raise LineageIntegrityError(
                         f"record references uncommitted evidence {evidence_id}"
                     )
+                if not isinstance(evidence, EvidenceRecord):
+                    raise LineageIntegrityError(
+                        f"evidence dependency {evidence_id} has the wrong record type"
+                    )
+                if evidence.run_id != record.run_id:
+                    raise LineageIntegrityError(
+                        f"record references Evidence {evidence_id} from another Run"
+                    )
+                if evidence.iteration > record.iteration:
+                    raise LineageIntegrityError(
+                        f"record references future Evidence {evidence_id}"
+                    )
             if isinstance(record, TransitionRecord) and record.decision_id is not None:
-                if (DecisionRecord.RECORD_TYPE, record.decision_id) not in available:
+                decision = available.get(
+                    (DecisionRecord.RECORD_TYPE, record.decision_id)
+                )
+                if decision is None:
                     raise LineageIntegrityError(
                         f"transition references uncommitted decision "
                         f"{record.decision_id}"
+                    )
+                if not isinstance(decision, DecisionRecord):
+                    raise LineageIntegrityError(
+                        f"decision dependency {record.decision_id} has the wrong record type"
+                    )
+                if (
+                    decision.run_id != record.run_id
+                    or decision.iteration != record.iteration
+                ):
+                    raise LineageIntegrityError(
+                        "transition and Decision lineage differ"
                     )
             if isinstance(record, StateSnapshot):
                 decision_id = record.metadata.get("decision_id")
@@ -409,9 +465,23 @@ class ControlRecordStore:
                         raise LineageIntegrityError(
                             "snapshot metadata.decision_id must be a string"
                         )
-                    if (DecisionRecord.RECORD_TYPE, decision_id) not in available:
+                    decision = available.get(
+                        (DecisionRecord.RECORD_TYPE, decision_id)
+                    )
+                    if decision is None:
                         raise LineageIntegrityError(
                             f"snapshot references uncommitted decision {decision_id}"
+                        )
+                    if not isinstance(decision, DecisionRecord):
+                        raise LineageIntegrityError(
+                            f"decision dependency {decision_id} has the wrong record type"
+                        )
+                    if decision.run_id != record.run_id or record.iteration not in {
+                        decision.iteration,
+                        decision.iteration + 1,
+                    }:
+                        raise LineageIntegrityError(
+                            "snapshot and Decision lineage differ"
                         )
 
 

@@ -43,6 +43,7 @@ class RSIConfig:
     max_iterations: int = 5
     plateau_patience: int = 2
     min_improvement: float = 0.005
+    regression_tolerance: float = 0.05
     examples_per_iteration: int = 12
     initial_score: float = 0.50
     benchmark_id: str = "mock-agent-benchmark"
@@ -112,6 +113,21 @@ class AdapterConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class ApprovalConfig:
+    dataset_review_required: bool = False
+    checkpoint_review_required: bool = False
+    harness_review_required: bool = False
+    sample_rate: float = 0.01
+    min_sample_items: int = 1
+    max_sample_items: int = 50
+    decision_ttl_seconds: int | None = 86_400
+    allowed_reviewer_roles: tuple[str, ...] = (
+        "researcher",
+        "release-manager",
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class PipelineConfig:
     model_id: str = "mock-student-8b"
     teacher_model: str = "mock-teacher-70b"
@@ -121,6 +137,7 @@ class PipelineConfig:
     rsi: RSIConfig = field(default_factory=RSIConfig)
     co_evolution: CoEvolutionConfig = field(default_factory=CoEvolutionConfig)
     adapters: AdapterConfig = field(default_factory=AdapterConfig)
+    approval: ApprovalConfig = field(default_factory=ApprovalConfig)
     benchmark_texts: tuple[str, ...] = ()
 
     @classmethod
@@ -137,6 +154,7 @@ class PipelineConfig:
                 "rsi",
                 "co_evolution",
                 "adapters",
+                "approval",
                 "benchmark_texts",
             },
             "config",
@@ -170,6 +188,7 @@ class PipelineConfig:
                 "co_evolution",
             ),
             adapters=adapters,
+            approval=_approval_from_mapping(data.get("approval", {})),
             benchmark_texts=_string_tuple(
                 data.get("benchmark_texts", defaults.benchmark_texts),
                 "benchmark_texts",
@@ -203,6 +222,7 @@ class PipelineConfig:
         self._validate_rsi()
         self._validate_co_evolution()
         self._validate_adapters()
+        self._validate_approval()
 
     def _validate_budget(self) -> None:
         _positive_number(self.budget.total_limit_usd, "budget.total_limit_usd")
@@ -245,6 +265,10 @@ class PipelineConfig:
         _positive_integer(self.rsi.max_iterations, "rsi.max_iterations")
         _positive_integer(self.rsi.plateau_patience, "rsi.plateau_patience")
         _nonnegative_number(self.rsi.min_improvement, "rsi.min_improvement")
+        _nonnegative_number(
+            self.rsi.regression_tolerance,
+            "rsi.regression_tolerance",
+        )
         _positive_integer(
             self.rsi.examples_per_iteration,
             "rsi.examples_per_iteration",
@@ -373,6 +397,39 @@ class PipelineConfig:
         elif serving.deploy_command or serving.undeploy_command:
             raise ValueError("local serving cannot define commands")
 
+    def _validate_approval(self) -> None:
+        approval = self.approval
+        for name in (
+            "dataset_review_required",
+            "checkpoint_review_required",
+            "harness_review_required",
+        ):
+            _boolean_value(getattr(approval, name), f"approval.{name}")
+        _bounded_open_ratio(approval.sample_rate, "approval.sample_rate")
+        _positive_integer(
+            approval.min_sample_items,
+            "approval.min_sample_items",
+        )
+        _positive_integer(
+            approval.max_sample_items,
+            "approval.max_sample_items",
+        )
+        if approval.min_sample_items > approval.max_sample_items:
+            raise ValueError(
+                "approval.min_sample_items cannot exceed max_sample_items"
+            )
+        if approval.decision_ttl_seconds is not None:
+            _positive_integer(
+                approval.decision_ttl_seconds,
+                "approval.decision_ttl_seconds",
+            )
+        roles = _string_tuple(
+            approval.allowed_reviewer_roles,
+            "approval.allowed_reviewer_roles",
+        )
+        if not roles:
+            raise ValueError("approval.allowed_reviewer_roles cannot be empty")
+
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
         value["verification"]["allowed_python_imports"] = list(
@@ -390,6 +447,9 @@ class PipelineConfig:
         )
         value["adapters"]["serving"]["undeploy_command"] = list(
             self.adapters.serving.undeploy_command
+        )
+        value["approval"]["allowed_reviewer_roles"] = list(
+            self.approval.allowed_reviewer_roles
         )
         return value
 
@@ -424,6 +484,20 @@ def _verification_from_mapping(value: object) -> VerificationConfig:
         VerificationConfig,
         data,
         "verification",
+    )
+
+
+def _approval_from_mapping(value: object) -> ApprovalConfig:
+    data = _mapping(value, "approval")
+    if "allowed_reviewer_roles" in data:
+        data["allowed_reviewer_roles"] = _string_tuple(
+            data["allowed_reviewer_roles"],
+            "approval.allowed_reviewer_roles",
+        )
+    return _dataclass_from_mapping(
+        ApprovalConfig,
+        data,
+        "approval",
     )
 
 
@@ -642,6 +716,12 @@ def _bounded_ratio(value: object, field_name: str) -> None:
     _nonnegative_number(value, field_name)
     if float(value) > 1.0:
         raise ValueError(f"{field_name} must be in [0, 1]")
+
+
+def _bounded_open_ratio(value: object, field_name: str) -> None:
+    _finite_number(value, field_name)
+    if not 0.0 < float(value) <= 1.0:
+        raise ValueError(f"{field_name} must be in (0, 1]")
 
 
 def _boolean_value(value: object, field_name: str) -> None:

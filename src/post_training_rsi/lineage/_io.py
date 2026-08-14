@@ -9,6 +9,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
+from ..adapter_runtime.errors import AdapterIntegrityError
+from ..adapter_runtime.integrity import sha256_path as canonical_artifact_sha256
 from ..control_plane.validation import canonical_json, normalize_json_object
 
 
@@ -89,28 +91,18 @@ def verify_file_hash(path: str | Path, expected_sha256: str) -> None:
 
 
 def sha256_path(path: str | Path) -> str:
-    """Hash a file or a directory deterministically without following symlinks."""
+    """Use the adapter/runtime artifact hash as the repository-wide canonical hash."""
 
     target = Path(path)
-    if target.is_symlink():
-        raise LineageIntegrityError(f"artifact path must not be a symlink: {target}")
-    if target.is_file():
-        return sha256_bytes(target.read_bytes())
-    if not target.is_dir():
-        raise LineageIntegrityError(f"artifact path does not exist: {target}")
-
-    digest = hashlib.sha256()
-    files = sorted(item for item in target.rglob("*") if item.is_file())
-    for item in files:
-        if item.is_symlink():
-            raise LineageIntegrityError(f"artifact tree contains symlink: {item}")
-        relative = item.relative_to(target).as_posix().encode("utf-8")
-        digest.update(len(relative).to_bytes(8, "big"))
-        digest.update(relative)
-        content = item.read_bytes()
-        digest.update(len(content).to_bytes(8, "big"))
-        digest.update(content)
-    return digest.hexdigest()
+    try:
+        return canonical_artifact_sha256(target)
+    except (AdapterIntegrityError, OSError) as exc:
+        message = str(exc)
+        if isinstance(exc, OSError) or "regular file or directory" in message or "does not exist" in message:
+            message = f"artifact path does not exist: {target}"
+        elif "contains a symlink" in message:
+            message = message.replace("a symlink", "symlink")
+        raise LineageIntegrityError(message) from exc
 
 
 @contextmanager
