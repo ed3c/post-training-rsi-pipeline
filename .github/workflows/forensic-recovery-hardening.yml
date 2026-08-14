@@ -1,0 +1,94 @@
+name: Forensic Recovery Hardening
+
+on:
+  push:
+    branches:
+      - feat/forensic-recovery-bundle
+    paths:
+      - "scripts/harden_forensic_recovery.py"
+      - "tests/test_recovery_bundle_hardening.py"
+      - ".github/workflows/forensic-recovery-hardening.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  harden-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/forensic-recovery-bundle
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Apply deterministic hardening
+        run: python scripts/harden_forensic_recovery.py
+
+      - name: Install
+        run: python -m pip install --upgrade pip && python -m pip install -e '.[dev]'
+
+      - name: Static validation
+        run: |
+          ruff check --fix \
+            src/post_training_rsi/recovery_bundle \
+            tests/test_recovery_bundle.py \
+            tests/test_recovery_bundle_cli.py \
+            tests/test_recovery_bundle_hardening.py \
+            tests/test_forensic_recovery_manifest.py \
+            scripts/harden_forensic_recovery.py \
+            scripts/sync_forensic_recovery_index.py
+          ruff format \
+            src/post_training_rsi/recovery_bundle \
+            tests/test_recovery_bundle.py \
+            tests/test_recovery_bundle_cli.py \
+            tests/test_recovery_bundle_hardening.py \
+            tests/test_forensic_recovery_manifest.py \
+            scripts/harden_forensic_recovery.py \
+            scripts/sync_forensic_recovery_index.py
+          python -m compileall -q src tests scripts
+          ruff check src tests scripts
+          mypy src
+
+      - name: Recovery proof matrix
+        run: |
+          python -m pytest -q \
+            tests/test_recovery_bundle.py \
+            tests/test_recovery_bundle_cli.py \
+            tests/test_recovery_bundle_hardening.py \
+            tests/test_forensic_recovery_manifest.py
+
+      - name: Full repository gate
+        run: |
+          python -m pytest -q \
+            --cov=post_training_rsi \
+            --cov-report=term-missing \
+            --cov-fail-under=75
+
+      - name: Commit hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "Forensic recovery hardening is already applied."
+            exit 0
+          fi
+          git config user.name "ed3c"
+          git config user.email "mcnum01@gmail.com"
+          git add \
+            src/post_training_rsi/recovery_bundle \
+            tests/test_recovery_bundle.py \
+            tests/test_recovery_bundle_cli.py \
+            tests/test_recovery_bundle_hardening.py \
+            tests/test_forensic_recovery_manifest.py \
+            scripts/harden_forensic_recovery.py \
+            scripts/sync_forensic_recovery_index.py
+          git commit -m "fix(recovery): harden staged filesystem invariants"
+          git push origin HEAD:feat/forensic-recovery-bundle
