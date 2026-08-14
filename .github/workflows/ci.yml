@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main, feat/pdf-architecture]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install
+        run: python -m pip install --upgrade pip && python -m pip install -e '.[dev]'
+      - name: Static validation
+        run: |
+          python -m compileall -q src tests
+          ruff check src tests
+      - name: Tests
+        run: pytest --cov=post_training_rsi --cov-report=term-missing --cov-fail-under=75
+      - name: CLI smoke test
+        run: python -m post_training_rsi --workspace /tmp/rsi-ci demo
