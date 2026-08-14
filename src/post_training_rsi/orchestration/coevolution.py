@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any, TypeAlias
 
@@ -1104,6 +1105,14 @@ class CoEvolutionController:
                 "verified_trace_count",
                 self.config.co_evolution.target_traces,
             )
+        policy_input = replace(
+            current,
+            metadata={
+                **dict(current.metadata),
+                "active_model_score": metadata.active_model_score,
+                "active_harness_id": metadata.active_harness_id,
+            },
+        )
         request = ModelTrainingRequest.create(
             run_id=self.run_id,
             cycle=current.cycle,
@@ -1159,7 +1168,7 @@ class CoEvolutionController:
             )
         )
         trained_step = policy.training_completed(
-            current,
+            policy_input,
             execution.bundle.candidate,
         )
         self._commit_step(
@@ -1987,9 +1996,15 @@ class CoEvolutionController:
         subject = metadata.pending_approval_subject
         if request_id is None or request_sha256 is None or subject is None:
             raise RuntimeError("pending approval metadata is incomplete")
+        as_of = self.clock.at(cycle=current.cycle, ordinal=9_500)
+        if self.approval_service.store.has_decision(request_id):
+            stored_decision = self.approval_service.store.load_decision(
+                request_id
+            )
+            as_of = _later_timestamp(as_of, stored_decision.decided_at)
         status = self.approval_service.status(
             request_id,
-            as_of=self.clock.at(cycle=current.cycle, ordinal=9_500),
+            as_of=as_of,
         )
         if status.state in {ApprovalState.PENDING, ApprovalState.EXPIRED}:
             return False
@@ -2600,6 +2615,12 @@ def build_reference_coevolution_controller(
         workspace=workspace,
         run_id=run_id,
     )
+
+
+def _later_timestamp(first: str, second: str) -> str:
+    first_value = datetime.fromisoformat(first.replace("Z", "+00:00"))
+    second_value = datetime.fromisoformat(second.replace("Z", "+00:00"))
+    return first if first_value >= second_value else second
 
 
 def _record_id(prefix: str, run_id: str, iteration: int, subject: str) -> str:
