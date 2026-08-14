@@ -87,10 +87,11 @@ def validate_id_tuple(values: Sequence[str], field_name: str) -> tuple[str, ...]
 def normalize_json_object(value: Mapping[str, object], field_name: str) -> dict[str, JSONValue]:
     if not isinstance(value, Mapping):
         raise ControlContractError(f"{field_name} must be a JSON object")
+    keys = list(value)
+    if any(not isinstance(key, str) for key in keys):
+        raise ControlContractError(f"{field_name} keys must be strings")
     normalized: dict[str, JSONValue] = {}
-    for key in sorted(value):
-        if not isinstance(key, str):
-            raise ControlContractError(f"{field_name} keys must be strings")
+    for key in sorted(keys):
         normalized[key] = normalize_json_value(value[key], f"{field_name}.{key}")
     return normalized
 
@@ -126,8 +127,11 @@ def validated_record_mapping(
 ) -> dict[str, object]:
     if not isinstance(value, Mapping):
         raise ControlContractError("record must be a mapping")
+    keys = list(value)
+    if any(not isinstance(key, str) for key in keys):
+        raise ControlContractError("record keys must be strings")
     data = dict(value)
-    actual_fields = set(data)
+    actual_fields = set(keys)
     missing = sorted(expected_fields - actual_fields)
     unknown = sorted(actual_fields - expected_fields)
     if missing or unknown:
