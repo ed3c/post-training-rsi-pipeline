@@ -47,10 +47,10 @@
   ],
   "owned_paths": [
     ".github/workflows/recovery-bundle.yml",
-    ".github/workflows/forensic-recovery-repair.yml",
     "src/post_training_rsi/recovery_bundle",
     "tests/test_recovery_bundle.py",
     "tests/test_recovery_bundle_cli.py",
+    "tests/test_recovery_bundle_hardening.py",
     "tests/test_forensic_recovery_manifest.py",
     "docs/forensic-recovery-bundle.md",
     "docs/forensic-recovery-manifest.json"
