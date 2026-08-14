@@ -1,0 +1,96 @@
+{
+  "artifacts": {
+    "activation_plan_schema": "post-training-rsi.recovery-activation-plan/v1",
+    "activation_request_schema": "post-training-rsi.recovery-activation-request/v1",
+    "authority_receipt_schema": "post-training-rsi.recovery-authority-receipt/v1",
+    "preflight_observation_schema": "post-training-rsi.recovery-preflight/v1",
+    "preflight_report_schema": "post-training-rsi.recovery-preflight-report/v1"
+  },
+  "branch": "feat/recovery-activation-plan",
+  "commands": [
+    "build",
+    "verify",
+    "preflight"
+  ],
+  "dependencies": [
+    {
+      "branch": "feat/forensic-recovery-bundle",
+      "pr": 13,
+      "role": "content-addressed bundle and inactive staged restore"
+    },
+    {
+      "branch": "feat/coevolution-audit-recovery",
+      "pr": 12,
+      "role": "strict staged semantic and integrity audit"
+    }
+  ],
+  "evidence_boundary": "Content-bound activation planning and explicit preflight only; every success result has executed=false and no live pointer is mutated.",
+  "git_town": {
+    "enabled": false,
+    "reason": "No exact Git Town version pin, repository configuration, verified full parent graph, worktree lease evidence, no-push rehearsal, or active stack.tsv is committed."
+  },
+  "human_owned_operations": [
+    "identity-provider authentication",
+    "reviewer role assignment and quorum",
+    "recovery ticket authorization",
+    "strict staged audit",
+    "live expected-generation compare-and-swap",
+    "activation receipt publication",
+    "rollback and writer resume"
+  ],
+  "invariants": [
+    "target generation differs from expected live generation",
+    "rollback pointer exactly equals expected live pointer",
+    "requester and reviewer are different identities",
+    "authority receipt binds the exact bundle and generation pair",
+    "staged audit status is PASS",
+    "target workspace URI equals the strictly audited staged root URI",
+    "plan validity is finite and does not outlive authority",
+    "preflight current live pointer equals the expected compare-and-swap pointer",
+    "all observed hashes and URIs exactly match the plan",
+    "successful build, verify, and preflight results report executed=false",
+    "no activate, apply, switch, resume, or rollback command exists"
+  ],
+  "owned_paths": [
+    ".github/workflows/recovery-activation-plan.yml",
+    "src/post_training_rsi/recovery_activation",
+    "tests/test_recovery_activation.py",
+    "tests/test_recovery_activation_cli.py",
+    "tests/test_recovery_activation_manifest.py",
+    "docs/recovery-activation-plan.md",
+    "docs/recovery-activation-manifest.json"
+  ],
+  "parent_branch": "feat/forensic-recovery-bundle",
+  "parent_pr": 13,
+  "pr": 14,
+  "record_type": "recovery_activation_planning_slice",
+  "rollback_subject": "Remove the recovery_activation package, focused tests/workflow, and PR-14 documentation.",
+  "schema_version": "post-training-rsi.recovery-activation-slice/v1",
+  "state_machine": [
+    {
+      "from": "REQUEST_RECEIVED",
+      "to": "AUTHORITY_BOUND"
+    },
+    {
+      "from": "AUTHORITY_BOUND",
+      "to": "PLAN_BUILT"
+    },
+    {
+      "from": "PLAN_BUILT",
+      "to": "PLAN_VERIFIED"
+    },
+    {
+      "from": "PLAN_VERIFIED",
+      "to": "OBSERVATION_RECEIVED"
+    },
+    {
+      "from": "OBSERVATION_RECEIVED",
+      "to": "PREFLIGHT_VERIFIED"
+    },
+    {
+      "from": "PREFLIGHT_VERIFIED",
+      "to": "READY_FOR_HUMAN_EXECUTION"
+    }
+  ],
+  "status": "DRAFT_IMPLEMENTED_COMPONENT"
+}
