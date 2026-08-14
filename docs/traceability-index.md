@@ -1,88 +1,162 @@
-# Architecture traceability index
+# Requirement traceability index
 
-This index maps the source-PDF requirements to checked-in implementation, tests, evidence artifacts, known gaps, and the molecular PR that should close each gap.
+Status: Draft PR #7 integration branch  
+Validated code head before the latest documentation commits: `ac334be8411f45196d2522c885ff893cb2d44fda`
 
-Status: **I** implemented/reachable, **IC** implemented component but not runtime-composed, **C** contract only, **P** partial, **N** not implemented.
+This index maps architecture requirements to code ownership, deterministic tests, durable artifacts, implementation status, gaps, and Pull Requests. A row marked Supported applies to `feat/rsi-convergence`, not to `main` until PR #7 is merged.
 
-| ID | Requirement | Code/config | Tests/evidence | Status | Gap / planned PR |
-|---|---|---|---|:---:|---|
-| `CTRL-DOM-01` | One versioned provider-neutral State/Event/Stop/Decision/Evidence vocabulary | `control_plane/enums.py`, `records.py`, `validation.py`; schema `post-training-rsi.control/v1` | `tests/test_control_plane.py`, `docs/control-plane-contracts.md` | C | runtime adoption in PR-03/04/05/06/07 |
-| `CTRL-DOM-02` | Exact-field canonical JSON and fail-closed record deserialization | `control_plane/records.py`, `validation.py` | round-trip, unknown-field, schema, enum, hash, timestamp, cost, evidence tests | C | persistence/runtime emission in PR-04/07 |
-| `PDF-RSI-01` | Five-stage diagnose → hypothesis → synthesize/verify → train → evaluate/decide loop | current `engine.py`; shared control enum; decision boundary in `orchestration/rsi_policy.py` | `test_engine.py`, `test_rsi_policy.py` | P | stage composition remains `GAP-RSI-01` / PR-07 |
-| `PDF-RSI-02` | Historical Peak is separate from latest candidate | `RSIDecisionPolicy`, `ArtifactStore.write_peak/load_peak`, schema-v1 decision/state records | strict promote-boundary, final-iteration promote, parent/active-Peak tests | IC | persistence and runtime adoption in PR-04/07 |
-| `PDF-RSI-03` | Plateau/early stopping prevents post-peak over-search | `RSIDecisionPolicy`, `RSIConfig.plateau_patience`, `StopReason.PLATEAU` | reject → plateau stop test and explicit terminal records | IC | runtime adoption/provider-circuit convergence in PR-07 |
-| `PDF-RSI-04` | Regressed candidate rolls back; rejected candidate is not next parent | `RSIDecisionPolicy` parent invariant and rollback path | regression rollback, parent mismatch, active-is-Peak tests | IC | runtime serving rollback/persistence in PR-04/05/07 |
-| `PDF-RSI-05` | Maximum iteration does not erase a valid final improvement | `RSIDecisionPolicy._advance` | promote → `STOPPED(MAX_ITERATIONS)` test | IC | runtime adoption in PR-07 |
-| `PDF-COST-01` | Per-trial and total API budget circuit breakers | `cost.py`, `BudgetConfig`, `RSIDecisionPolicy` budget decisions | cost-ledger tests; exact-limit/per/total policy tests | P/IC | all-stage accounting and runtime adoption in PR-05/07 |
-| `PDF-COST-02` | Bounded provider failures/retries | `CostLedger.record_api_failure`, provider circuit event/reason contracts | cost unit test; contract serialization | C | not wired to Teacher; PR-05 |
-| `PDF-DATA-01` | Exact duplicate, Shannon entropy, Distinct-N, TTR | `verification/lexical.py`, `pipeline.py` | `test_verification.py`, `filter_audit.jsonl` | I | calibrate domain thresholds later |
-| `PDF-DATA-02` | Semantic novelty against accepted history | `verification/semantic.py`, `max_semantic_similarity` | verification tests/metrics | I | dense index remains optional contract |
-| `PDF-DATA-03` | Benchmark N-gram/LCS decontamination | `verification/decontamination.py` | verification tests/metrics | I | large-scale index is production work |
-| `PDF-SAFE-01` | Prompt-injection/content safety gate | `verification/safety.py` | verification tests | I/P | rule classifier only; external classifier selection in PR-05 |
-| `PDF-CODE-01` | Generated Python static allowlist check | `verification/code.py` | verification tests | I | execution sandbox remains out of core |
-| `PDF-LIN-01` | Teacher/API/prompt/filter/dataset/checkpoint/decision lineage | `generation.py`, `synthesis/`, `LineageManifest`, schema-v1 records, policy outputs | lineage, control-plane, and policy tests | C/P/IC | control records/manifests not persisted by runtime; PR-04/07 |
-| `PDF-LIN-02` | Regression audit from checkpoint back to data/filter/Teacher | local store primitives and `EvidenceKind.REGRESSION_AUDIT` | no `audit` CLI | N/C | `GAP-CLI-01` / PR-07 |
-| `PDF-TRAIN-01` | Provider-neutral SFT/DPO training boundary | `Trainer`, `MockTrainer`, `CommandTrainer`, training/checkpoint evidence kinds | adapter and contract tests | C/P | mock used; strict selection/artifact verification in PR-05 |
-| `PDF-EVAL-01` | Dynamic benchmark with task/failure evidence | `Evaluator`, deterministic/command adapters, evaluation/failure evidence kinds | adapter and contract tests | I/P | endpoint not passed; policy not composed |
-| `PDF-SERVE-01` | Candidate deploy → evaluate → teardown | `ServingAdapter.deploy`, serving evidence kinds/events | adapter and contract tests | P/C | no endpoint handoff/undeploy; PR-05 |
-| `PDF-HITL-01` | Human review for data and Model/Harness promotion | approval actions/subjects/evidence vocabulary only | control contract tests | C/N | `GAP-HITL-01` / PR-06 |
-| `PDF-COEV-01` | Harness mutation from failure traces | control states/events plus `harness/__init__.py` placeholder | contract tests only | C/N | `GAP-COEV-01` / PR-08 |
-| `PDF-COEV-02` | Plateau triggers successful trace harvesting | control states/events and config only | contract tests only | C/N | `GAP-COEV-02` / PR-09 |
-| `PDF-COEV-03` | Verified traces train candidate model | reusable verification/trainer contracts and control vocabulary | none end to end | C/N | PR-10 |
-| `PDF-COEV-04` | Better model hot-swaps, Harness slims, outer loop resets | serving/control contracts only | none end to end | C/N | PR-11 |
-| `OPS-CLI-01` | Documented commands are actually registered | `__main__.py` | `test_cli.py` | P | only `demo`; PR-07 |
-| `OPS-CI-01` | Deterministic no-network/no-GPU CI | `.github/workflows/ci.yml` | PR #2 and PR #3 matrix CI on Python 3.11/3.12 | I | retain transition matrices as features land |
-| `DOC-AGENT-01` | Agent read order, ownership, invariants | root/scoped `AGENTS.md`, `docs/README.md` | documentation PR review | I | maintain in every structural PR |
-| `DOC-SM-01` | Directory → state-machine → data-flow mapping | `README.md`, `state-machine.md`, `control-plane-contracts.md`, `rsi-loop-policy.md` | traceability review | I | update with every transition/schema change |
-| `OPS-GT-01` | Safe Git Town stack operation | no config/version/manifest | no admission evidence | N | remain fail closed; see `stacked-pr-plan.md` |
-
-Combined statuses mean different layers are at different maturity. For example, `P/IC` means the supported runtime is partial while a bounded component is implemented and tested.
-
-## Policy record evidence
-
-PR #3 emits deterministic in-memory/canonical schema-v1 records at the candidate decision boundary:
+## Status legend
 
 ```text
-CandidateObservation
-  -> DecisionRecord(CHECKPOINT: PROMOTE | REJECT | ROLLBACK | ABORT)
-  -> TransitionRecord(EVALUATE -> candidate outcome)
-  -> StateSnapshot(candidate outcome)
-  -> optional DecisionRecord(RUN: CONTINUE | STOP)
-  -> optional TransitionRecord(outcome -> DIAGNOSE | STOPPED)
-  -> optional StateSnapshot(DIAGNOSE | STOPPED)
+Supported               reachable from current branch CLI/API and tested
+Implemented component   coded/tested but not composition-reachable
+Contract only           schema/protocol only
+Partial                 some required evidence/edges missing
+Planned                 target only
+Not verified            implementation may exist; required execution evidence absent
 ```
 
-These records are test evidence, not persisted runtime artifacts. PR-04 owns immutable storage; PR-07 owns supported orchestration.
+## 1. Recursive Self-Improvement
 
-## Evidence paths
+| Requirement ID | Requirement | Code owner | Tests/evidence | Durable artifact | Status | Gap / PR |
+|---|---|---|---|---|---|---|
+| PDF-RSI-01 | five-stage Diagnose → Hypothesis → Synthesize/Verify → Train → Evaluate loop | `orchestration/converged.py`, `run_state.py`, CLI `rsi` | full test suite; converged RSI smoke | control records, iteration bundles, Run report | Supported | PR #7 |
+| PDF-RSI-02 | historical Peak separate from latest Candidate | `rsi_policy.py`, `lineage/peak_store.py` | `test_rsi_policy.py`, Peak monotonic tests, audit smoke | `peak_checkpoint.json`, `peak_history/` | Supported | PR #3 + #4 + #7 |
+| PDF-RSI-03 | strict minimum improvement | `rsi_policy.py` | threshold equality and strict promotion tests | promotion/rejection Decision | Supported | PR #3 |
+| PDF-RSI-04 | plateau early stop | `rsi_policy.py`, converged controller | plateau/patience tests | terminal Decision/Snapshot | Supported | PR #3 + #7 |
+| PDF-RSI-05 | maximum iteration stop | `rsi_policy.py`, config | final-iteration promotion and max tests | stop Decision/Snapshot | Supported | PR #3 + #7 |
+| PDF-RSI-06 | budget circuit breaker | `cost.py`, `rsi_policy.py`, controller | exact-limit and crossing tests | cost Evidence + abort Decision | Supported | PR #3 + #7 |
+| PDF-RSI-07 | regression rollback | `rsi_policy.py`, `quarantine_store.py` | rollback and marker tests | rollback Decision + marker | Supported | PR #3 + #4 + #7 |
+| PDF-RSI-08 | rejected Candidate never becomes parent | `rsi_policy.py`, resume/controller guards | parent-invariant tests | Snapshot + Peak pointer | Supported | PR #3 + #7 |
+| PDF-RSI-09 | deterministic resume | `run_state.py`, `converged.py`, stores | replay/resume tests and smoke | Run metadata, transactions, Snapshots, Peak | Supported | PR #7 |
 
-| Evidence | Producer | Consumer | Current status |
+## 2. Synthetic data and verification
+
+| Requirement ID | Requirement | Code owner | Tests/evidence | Durable artifact | Status | Gap / PR |
+|---|---|---|---|---|---|---|
+| PDF-DATA-01 | exact duplicate rejection | `verification/pipeline.py` | verification tests | `filter_audit.jsonl` | Supported | baseline + PR #7 composition |
+| PDF-DATA-02 | Shannon entropy floor | `verification/lexical.py`, pipeline | lexical/verification tests | audit metrics/reason | Supported | baseline |
+| PDF-DATA-03 | Distinct-N / TTR floors | `verification/lexical.py`, pipeline | lexical/verification tests | audit metrics/reason | Supported | baseline |
+| PDF-DATA-04 | semantic novelty against history | `verification/semantic.py`, pipeline | semantic/verification tests | similarity metric/reason | Supported by configured backend | production embedding backend not verified |
+| PDF-DATA-05 | N-gram benchmark decontamination | `verification/decontamination.py` | decontamination tests | overlap metric/reason | Supported | production corpus governance gap |
+| PDF-DATA-06 | LCS benchmark decontamination | `verification/decontamination.py` | decontamination tests | LCS metric/reason | Supported | production corpus governance gap |
+| PDF-DATA-07 | prompt/role safety gate | `verification/safety.py` | safety tests | safety category/reason | Supported | production safety model not verified |
+| PDF-DATA-08 | Python AST/import static gate | `verification/code.py` | static-code tests | static reasons | Supported | sandbox execution planned |
+| PDF-DATA-09 | exact accepted Dataset hash | `lineage/store.py`, controller/adapter integrity | Dataset-hash tests, verify CLI | `accepted.jsonl` SHA-256 | Supported | PR #5 + #7 |
+| PDF-DATA-10 | quarantine rejected data | verification + `lineage/quarantine_store.py` | quarantine tests | `quarantine.jsonl`, marker | Supported | PR #4 + #7 |
+
+## 3. Provider and serving boundary
+
+| Requirement ID | Requirement | Code owner | Tests/evidence | Durable artifact | Status | Gap / PR |
+|---|---|---|---|---|---|---|
+| PDF-ADP-01 | provider-neutral Teacher | `synthesis/`, `adapter_runtime/factory.py` | adapter/Teacher tests | synthesis manifest/evidence | Supported with mock/command selection | real API not verified; infrastructure PR |
+| PDF-ADP-02 | bounded retries and timeout | `adapter_runtime/command.py`, adapter configs | timeout/retry/stale-result tests | request/response/commit bundle | Supported | managed scheduler not verified |
+| PDF-ADP-03 | no shell command interpolation | adapter config/command runtime | command-config tests | command metadata | Supported | PR #5 |
+| PDF-ADP-04 | secret-minimizing environment | adapter runtime | secret-exclusion tests | sanitized metadata | Supported | production secret manager gap |
+| PDF-ADP-05 | Trainer echo and Dataset/parent integrity | `training/adapter.py`, controller | mismatch tests | training evidence + Checkpoint payload | Supported | real GPU not verified |
+| PDF-ADP-06 | controller artifact SHA-256 | `adapter_runtime/integrity.py` | path/hash/symlink/mutation tests | commit + Checkpoint hash | Supported | remote URI policy gap |
+| PDF-SERVE-01 | Candidate deployment | `serving/adapter.py`, lifecycle | deploy tests | endpoint Evidence | Supported with local/command adapter | live vLLM/SGLang not verified |
+| PDF-SERVE-02 | exact endpoint handoff to evaluator | lifecycle/controller | endpoint-handoff tests | evaluation metadata | Supported | PR #5 + #7 |
+| PDF-SERVE-03 | teardown on success/failure | lifecycle/controller | teardown matrix | teardown Evidence | Supported | production provider not verified |
+| PDF-EVAL-01 | dynamic benchmark evaluation | `evaluation/adapter.py`, controller | deterministic/command evaluator tests | evaluation Evidence | Supported with deterministic/command adapter | Inspect AI/lm-eval live suite gap |
+| PDF-EVAL-02 | task-family failure traces | evaluator/control vocabulary | evaluator tests where present | failure-trace Evidence | Partial | production suite PR |
+
+## 4. Lineage and audit
+
+| Requirement ID | Requirement | Code owner | Tests/evidence | Durable artifact | Status | Gap / PR |
+|---|---|---|---|---|---|---|
+| PDF-LIN-01 | immutable Evidence/Decision/Transition/Snapshot | `lineage/control_store.py` | transaction/replay/tamper tests | `control/*` | Supported | PR #4 + #7 |
+| PDF-LIN-02 | transaction marker written last | control store | orphan/uncommitted tests | `control/transactions/*.json` | Supported | PR #4 |
+| PDF-LIN-03 | cross-Run/future dependency rejection | control store | dependency integrity tests | rejected write/no marker | Supported | PR #4 repair + #7 |
+| PDF-LIN-04 | atomic Checkpoint bundle | `checkpoint_store.py` | bundle/idempotency/tamper tests | three-file Checkpoint bundle | Supported | PR #4 + #7 |
+| PDF-LIN-05 | full Teacher/Prompt/Filter/Dataset/Parent/Score lineage | `lineage/manifest.py`, controller | manifest/bundle tests, audit smoke | `lineage_manifest.json` | Supported | production external service gap |
+| PDF-LIN-06 | monotonic Peak compare-and-swap | `peak_store.py` | stale/non-promote/hash/score/iteration tests | Peak pointer + history | Supported | distributed consensus gap |
+| PDF-LIN-07 | immutable reject/quarantine/rollback history | `quarantine_store.py` | marker action/subject/evidence/conflict tests | `quarantine/*.json` | Supported | retention/legal-hold gap |
+| PDF-LIN-08 | reverse Checkpoint audit | CLI `audit`, lineage stores | audit smoke | regression audit report | Supported | cross-service index gap |
+| PDF-LIN-09 | code commit provenance | lineage manifest/run metadata | manifest tests | commit field in lineage | Supported locally | signed/reproducible build gap |
+
+## 5. Human-in-the-Loop
+
+| Requirement ID | Requirement | Code owner | Tests/evidence | Durable artifact | Status | Gap / PR |
+|---|---|---|---|---|---|---|
+| PDF-HITL-01 | deterministic review sampling | `approval/sampling.py` | order-invariance/sample-bound tests | sample manifest | Supported | PR #6 + #7 |
+| PDF-HITL-02 | content-addressed request | `approval/contracts.py`, service/store | request replay/conflict tests | immutable request | Supported | PR #6 |
+| PDF-HITL-03 | immutable reviewer Decision | approval service/store | approve/deny/replay/conflict tests | immutable Decision | Supported | PR #6 |
+| PDF-HITL-04 | Dataset acceptance gate | controller + approval service | pause/require-approved tests | request/decision evidence | Supported when enabled | enterprise identity gap |
+| PDF-HITL-05 | Checkpoint promotion gate | controller + approval service | subject/action/hash substitution tests | request/decision evidence | Supported when enabled | enterprise quorum gap |
+| PDF-HITL-06 | Harness acceptance gate | approval component | component tests | request/decision evidence | Implemented component | PR #8/#11 required |
+| PDF-HITL-07 | missing/pending/denied/expired fail closed | approval service | state matrix tests | no release authority | Supported | PR #6 |
+| PDF-HITL-08 | reviewer role boundary | approval policy | unauthorized-role tests | Decision metadata | Supported locally | IdP/MFA/RBAC gap |
+
+## 6. State Machine and Agent contracts
+
+| Requirement ID | Requirement | Code owner | Tests/evidence | Durable artifact | Status | Gap / PR |
+|---|---|---|---|---|---|---|
+| OPS-STATE-01 | stable State/Event/Stop vocabulary | `control_plane/enums.py` | control-plane tests | canonical records | Supported | PR #2 |
+| OPS-STATE-02 | exact schema/fail-closed parsing | `records.py`, `validation.py` | unknown-field/type/time/hash tests | rejected parse or canonical JSON | Supported | PR #2 |
+| OPS-STATE-03 | directory → State ownership | `AGENTS.md`, README, scoped AGENTS | documentation review + path-disjoint PRs | docs | Supported as repository contract | PR #1/#7 |
+| OPS-STATE-04 | current/component/target separation | docs contract | documentation review | docs | Supported as repository contract | PR #1/#7 |
+| OPS-TRACE-01 | requirement → code/test/artifact/PR index | this document | row review | docs | Supported | update with every structural PR |
+| OPS-RESUME-01 | durable resume, not process memory | controller/run state/lineage | resume/replay tests | Run metadata + control state | Supported | PR #7 |
+
+## 7. Model/Harness Co-Evolution target
+
+| Requirement ID | Requirement | Planned/current owner | Evidence required | Status | Planned PR |
+|---|---|---|---|---|---|
+| PDF-COEV-01 | freeze active model during Harness search | `harness/`, future controller | freeze Snapshot and active-model invariant tests | Planned integration | PR #8 |
+| PDF-COEV-02 | mutate Prompt/tool/retry policy | Harness mutator | mutation diff, static/policy validation | Planned integration | PR #8 |
+| PDF-COEV-03 | benchmark Harness Candidate and accept only improvement | Harness evaluator/policy | scores, traces, accept/reject Decisions | Planned integration | PR #8 |
+| PDF-COEV-04 | plateau triggers trace harvesting | trace harvester | plateau Decision + trace batch evidence | Planned integration | PR #9 |
+| PDF-COEV-05 | verify harvested traces through same gates | verification pipeline | accepted/quarantine trace Dataset hashes | Planned integration | PR #9 |
+| PDF-COEV-06 | train/evaluate Candidate model from verified traces | trainer/evaluator | Checkpoint, evaluation, lineage | Planned | PR #10 |
+| PDF-COEV-07 | promote or rollback and hot-swap | model policy/controller | Decision, Peak/Harness pointer, rollback evidence | Planned | PR #10 |
+| PDF-COEV-08 | slim Harness and reset outer loop | future convergence | before/after Harness snapshots and cycle State | Planned | PR #11 |
+| PDF-COEV-09 | supported `coevolve` CLI and resume | future convergence | E2E tests, cost/plateau/approval/resume | Planned | PR #11 |
+
+## 8. Production requirements
+
+| Requirement ID | Requirement | Current status | Exit evidence |
 |---|---|---|---|
-| `iterations/iter-N/raw.jsonl` | synthesis/generation | verification audit | current |
-| `iterations/iter-N/accepted.jsonl` | verification | trainer | current |
-| `iterations/iter-N/quarantine.jsonl` | verification | audit/root-cause flow | current |
-| `iterations/iter-N/filter_audit.jsonl` | verification | data-science review | current |
-| `iterations/iter-N/synthesis_manifest.json` | generator/Teacher | lineage | current |
-| `iterations/iter-N/dataset_summary.json` | artifact store | controller/ops | current |
-| `checkpoints/<id>/weights.mock.json` | mock trainer | local serving/evaluation | current |
-| `checkpoints/<id>/checkpoint.json` | artifact store target path | audit/deployment | target |
-| `checkpoints/<id>/lineage_manifest.json` | lineage target path | audit/MLflow/DVC mirror | target |
-| `control/evidence/<id>.json` | adapters/modules via `EvidenceRecord` | decisions/transitions/lineage | target persistence |
-| `control/decisions/<id>.json` | policy/approval via `DecisionRecord` | transitions/audit | schema + pure policy implemented; persistence target |
-| `control/transitions/<id>.json` | controller via `TransitionRecord` | replay/audit | schema + pure policy implemented; persistence target |
-| `control/snapshots/<id>.json` | controller via `StateSnapshot` | resume/ops | schema + pure policy implemented; persistence target |
-| `peak_checkpoint.json` | promotion transaction target | next iteration and rollback | target |
-| `reports/rsi-run-summary.json` | current engine | human/CI evidence | current |
+| PROD-INF-01 | real Teacher API | Not verified | versioned requests, token/cost/error evidence, no secret leakage |
+| PROD-INF-02 | real GPU SFT/DPO | Not verified | reproducible job, Dataset/artifact hashes, loss/metrics, teardown/cost |
+| PROD-INF-03 | live serving | Not verified | readiness, endpoint benchmark, teardown, failure drill |
+| PROD-EVAL-01 | production task suites | Not verified | versioned Inspect AI/lm-eval config, per-family scores and traces |
+| PROD-STO-01 | remote versioning/lineage | Not verified | DVC/lakeFS/MLflow/object-store transaction and recovery drill |
+| PROD-SEC-01 | sandbox/egress | Not verified | allow/deny/resource/network/escape test matrix |
+| PROD-SEC-02 | enterprise HITL identity | Not verified | IdP, MFA, RBAC, quorum, separation of duties |
+| PROD-OPS-01 | distributed writer safety | Not verified | lock/consensus/contention tests |
+| PROD-OPS-02 | backup/restore/retention | Not verified | corruption, restore, retention, and disaster-recovery drill |
 
-## Traceability update rule
+## 9. Pull Request mapping
 
-A requirement may move to **Implemented** only when:
+```text
+PR #1  Agent/documentation contracts
+PR #2  State-domain contracts
+PR #3  RSI decision policy
+PR #4  transactional lineage runtime
+PR #5  adapter runtime
+PR #6  HITL approval
+PR #7  supported RSI convergence
+PR #8  proposed Harness outer loop
+PR #9  proposed trace harvesting
+PR #10 proposed model inner loop
+PR #11 proposed Co-Evolution convergence
+```
 
-1. its supported CLI/runtime path exists;
-2. a negative/rollback test exists where applicable;
-3. the exact evidence file is asserted;
-4. schema-v1 control records are emitted where the requirement crosses module boundaries;
-5. current-state docs no longer list the gap;
-6. the PR is linked in this table or its successor manifest.
+Git Town is not configured. These mappings are traceability metadata, not executable stack configuration.
 
-A bounded module may use **Implemented component** when its behavior and deterministic tests are complete but runtime composition or persistence remains outside its owned path.
+## 10. Update rule
+
+Every structural PR must add or update rows for:
+
+```text
+requirement ID
+exact code owner
+exact tests/evidence
+artifact path/schema
+status
+known gap
+PR owner
+```
+
+Do not mark a row Supported until a supported path reaches the capability and the exact head has deterministic evidence.
