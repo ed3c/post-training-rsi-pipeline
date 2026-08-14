@@ -2,43 +2,44 @@
 
 > Evidence-first reference implementation for post-training data design, Recursive Self-Improvement (RSI), and Model/Harness Co-Evolution.
 
-This repository converts the source PDF architecture into executable components and explicit integration contracts. It deliberately separates:
+This repository converts the source architecture into executable components, versioned control contracts, and reviewable integration slices. It separates three kinds of truth:
 
-- **current executable truth** — what the checked-in CLI and tests can reach now;
-- **contract-only components** — typed records, adapters, or stores that exist but are not selected or emitted by the runtime;
-- **target architecture** — the full RSI and Co-Evolution state machines still being integrated.
+- **current executable truth** — reachable from the checked-in supported CLI;
+- **implemented components / contract-only components** — coded and tested boundaries that are not yet composed into the supported runtime;
+- **target architecture** — the complete RSI and Model/Harness Co-Evolution state machines still being integrated.
 
 Start with [`AGENTS.md`](AGENTS.md), then use the [documentation index](docs/README.md).
 
 ## Current integration truth
 
-Runtime baseline: `feat/pdf-architecture` at `2fa9a8d9746ae5dccd5ff68d78b3a7d75e7c43be`, package version `0.2.0`. The latest CI run for that baseline is green.
+Runtime baseline: `feat/pdf-architecture` at `2fa9a8d9746ae5dccd5ff68d78b3a7d75e7c43be`, package version `0.2.0`.
 
-Documentation and contract work is stacked with ordinary GitHub PRs:
+The active work is an ordinary GitHub parent/child stack:
 
 ```text
 PR #1  docs/agent-state-machine-index
 └── PR #2  feat/state-domain-contracts
+    └── PR #3  feat/rsi-loop-policy
 ```
 
-PR #2 defines `post-training-rsi.control/v1`, but the supported runtime does not emit those records yet.
+Git Town is not configured. The graph above is not an executable Git Town stack.
 
 | Capability | Status | Current truth |
 |---|---|---|
 | Deterministic `demo` | Implemented | Executes one synthesis → verify → train → deploy → evaluate pass |
-| Verification stack | Implemented | Exact/lexical/semantic/decontamination/safety/AST decisions are reachable |
-| Versioned control-plane records | Contract only | States, events, stop reasons, evidence, decisions, snapshots, and transitions are typed and tested; `RSIEngine` does not emit them |
-| Budget ledger | Partial | Generation cost is charged; all-stage accounting is not wired |
+| Verification stack | Implemented | Exact, lexical, semantic, benchmark-decontamination, safety, and Python AST decisions are reachable |
+| Versioned control-plane records | Contract only | `post-training-rsi.control/v1` is typed and tested; `RSIEngine` does not emit or persist it |
+| RSI candidate decision policy | Implemented component | Strict Peak, parent, reject, rollback, plateau, max-iteration, and budget behavior is tested in isolation; `RSIEngine` does not call it |
+| Budget ledger | Partial | Generation cost is charged; all-stage accounting and provider-circuit composition are not wired |
 | External Teacher/trainer/evaluator/serving | Contract only | Protocols/adapters exist; CLI/config does not select them |
-| Lineage store/schema | Partial | Iteration bundle is written; checkpoint manifest and Peak pointer are not wired by the engine |
-| Recursive RSI | Partial | Config fields exist, but `RSIEngine.run()` performs one hard-coded iteration |
-| Peak, rollback, plateau stopping | Planned | Candidate is currently marked promoted without historical comparison |
+| Lineage store/schema | Partial | Iteration bundle is written; schema-v1 records, Checkpoint manifest, and atomic Peak pointer are not wired |
+| Recursive RSI | Partial | Config and candidate policy exist, but supported `RSIEngine.run()` performs one hard-coded iteration |
+| HITL Dataset/Model/Harness approval | Planned | Shared decision/evidence vocabulary exists; no immutable approval store or CLI exists |
 | `verify`, `audit`, `coevolve` CLI | Planned | Checked-in CLI registers only `demo` |
 | Harness mutation/trace harvesting | Planned | `harness/` is currently a placeholder namespace |
-| HITL Dataset/Model/Harness approval | Planned | Shared decision/evidence vocabulary exists; no approval store or operational command exists |
-| Git Town stack | Not configured | No config, exact version pin, verified parent graph, worktree evidence, or active stack manifest |
+| Git Town stack | Not configured | No config, exact version pin, complete verified parent graph, worktree leases, rehearsal evidence, or active `stack.tsv` |
 
-The detailed evidence and gap IDs are in [`docs/implementation-status.md`](docs/implementation-status.md). Do not infer completion from the target diagrams or from enum values existing in the contract package.
+Detailed evidence and gap IDs are in [`docs/implementation-status.md`](docs/implementation-status.md). An enum value or isolated policy test is not proof that the supported CLI reaches that state.
 
 ## Quick start: supported path
 
@@ -53,13 +54,14 @@ post-training-rsi \
   demo
 ```
 
-Contract-only control-plane tests:
+Focused component tests:
 
 ```bash
 python -m pytest tests/test_control_plane.py
+python -m pytest tests/test_rsi_policy.py
 ```
 
-Development gate:
+Full development gate:
 
 ```bash
 make install
@@ -69,9 +71,9 @@ make test
 make demo
 ```
 
-`make coevolve` is a known red target at this baseline because the CLI does not expose `coevolve` yet.
+`make coevolve` is a known red target because the CLI does not expose `coevolve` yet.
 
-## Current executable state machine
+## 1. Current executable State Machine
 
 ```mermaid
 stateDiagram-v2
@@ -80,7 +82,7 @@ stateDiagram-v2
     SYNTHESIZED --> BUDGET_CHARGED: CostLedger.charge
     BUDGET_CHARGED --> VERIFIED: VerificationPipeline.verify
     VERIFIED --> DATA_REJECTED: no accepted records
-    VERIFIED --> TRAINED: at least one accepted record
+    VERIFIED --> TRAINED: accepted records exist
     TRAINED --> DEPLOYED: ServingAdapter.deploy
     DEPLOYED --> EVALUATED: Evaluator.evaluate
     EVALUATED --> COMPLETED: write run summary
@@ -88,20 +90,20 @@ stateDiagram-v2
     COMPLETED --> [*]
 ```
 
-Current flow limitations:
+Current runtime limitations:
 
-- hypothesis is hard-coded;
+- the hypothesis is hard-coded;
 - only iteration `1` runs;
-- `min_acceptance_rate` is configured but not enforced by the engine;
-- parent checkpoint is `None`;
-- candidate score is assigned as Peak score without comparison;
-- checkpoint manifest and `peak_checkpoint.json` are not written;
-- endpoint is not passed into evaluation and is not torn down;
-- outcomes use legacy/free-form result fields rather than schema-v1 control records.
+- configured `min_acceptance_rate` is not enforced by `RSIEngine`;
+- parent Checkpoint is `None`;
+- candidate score is assigned as Peak without historical comparison;
+- Checkpoint manifest, schema-v1 control records, and `peak_checkpoint.json` are not written;
+- serving endpoint is not passed to evaluation and is not torn down;
+- outcomes use legacy/free-form result fields.
 
-## Versioned control-plane contract
+## 2. Versioned control-plane contract
 
-PR #2 freezes a provider-neutral vocabulary before the path-disjoint runtime PRs begin:
+PR #2 freezes the provider-neutral language used by later orchestration, lineage, adapter, and approval work:
 
 ```mermaid
 flowchart LR
@@ -114,20 +116,49 @@ flowchart LR
     SR --> S2
 ```
 
-The exact schema is `post-training-rsi.control/v1` and is implemented under `src/post_training_rsi/control_plane/`:
+Schema: `post-training-rsi.control/v1`.
 
-- `ControlState` covers current runtime states, target five-stage RSI states, and target outer/middle/inner Co-Evolution states;
-- `ControlEvent` names facts that may request a transition;
-- `StopReason` provides a finite terminal taxonomy;
-- `DecisionAction`, `DecisionSubject`, and `EvidenceKind` prevent free-form cross-module semantics;
-- `EvidenceRecord`, `DecisionRecord`, `StateSnapshot`, and `TransitionRecord` use exact fields and canonical JSON;
-- unknown fields, unsupported schema versions, unsafe IDs, invalid timestamps/hashes/numbers, duplicate evidence IDs, and inconsistent terminal reasons fail closed.
+The package under `src/post_training_rsi/control_plane/` provides:
 
-The contract package does **not** decide legal adjacency, score thresholds, promotion, rollback, or persistence. Those responsibilities remain with the planned orchestration and lineage PRs. See [`docs/control-plane-contracts.md`](docs/control-plane-contracts.md).
+- `ControlState`, `ControlEvent`, and `StopReason`;
+- `DecisionAction`, `DecisionSubject`, and `EvidenceKind`;
+- immutable `EvidenceRecord`, `DecisionRecord`, `TransitionRecord`, and `StateSnapshot`;
+- exact-field, exact-schema, fail-closed deserialization;
+- safe IDs, timezone-aware UTC timestamps, finite numbers, unique evidence IDs, SHA-256 validation, and canonical JSON.
 
-## Target five-stage RSI state machine
+The package does not own State adjacency, score thresholds, provider calls, approval authority, or persistence. See [`docs/control-plane-contracts.md`](docs/control-plane-contracts.md).
 
-The source architecture requires a closed loop:
+## 3. Implemented but unwired RSI candidate policy
+
+PR #3 implements the decision boundary after a Candidate has already been evaluated:
+
+```mermaid
+stateDiagram-v2
+    EVALUATE --> ABORTED: budget crossed
+    EVALUATE --> PROMOTED: score > Peak + min_improvement
+    EVALUATE --> ROLLED_BACK: regression > tolerance
+    EVALUATE --> REJECTED: otherwise
+    PROMOTED --> DIAGNOSE: iterations remain
+    PROMOTED --> STOPPED: max iterations reached
+    REJECTED --> DIAGNOSE: patience and iterations remain
+    REJECTED --> STOPPED: plateau or max iterations
+```
+
+Policy invariants:
+
+```text
+active_checkpoint_id == peak_checkpoint_id
+candidate.parent_checkpoint_id == active_checkpoint_id
+candidate_score > peak_score + min_improvement     # strict promotion
+```
+
+Equality at the improvement boundary is rejection. Rejected or rolled-back candidates never become active parents. A valid final-iteration improvement is recorded before the maximum-iteration stop record. Exact budget limits are allowed; crossing either limit aborts.
+
+Every edge emits a paired `DecisionRecord`, `TransitionRecord`, and `StateSnapshot` with evidence IDs. Deterministic IDs include Candidate identity so different Candidates in the same iteration cannot collide.
+
+This policy is not called by `RSIEngine` and is not a supported CLI path. See [`docs/rsi-loop-policy.md`](docs/rsi-loop-policy.md).
+
+## 4. Target five-stage RSI State Machine
 
 ```mermaid
 flowchart TD
@@ -140,7 +171,7 @@ flowchart TD
     F -- no --> Q[Quarantine + root-cause evidence]
     F -- yes --> R{Dataset review required?}
     R -- pending/denied --> X[Stop fail-closed]
-    R -- approved/not required --> T[4. SFT/DPO candidate training]
+    R -- approved/not required --> T[4. SFT/DPO Candidate training]
     T --> E[5. Serve + benchmark]
     E --> P{Candidate > historical Peak + delta?}
     P -- yes --> M{Model promotion approval?}
@@ -153,104 +184,96 @@ flowchart TD
     C -- no --> Z[Plateau/max-iteration stop or rollback]
 ```
 
-The Peak is a stable historical pointer, not an alias for the latest candidate. A rejected candidate must never become the next parent.
+The historical Peak is a durable accepted pointer, not an alias for the latest Candidate.
 
-## Target Model/Harness Co-Evolution state machine
+## 5. Target Model/Harness Co-Evolution State Machine
 
 ```mermaid
 flowchart LR
     F[Freeze active model] --> M[Mutate Harness Prompt/tool/retry policy]
     M --> V[Static + policy validation]
-    V --> E[Evaluate Harness candidate]
+    V --> E[Evaluate Harness Candidate]
     E -->|improves| A[Accept Harness snapshot]
     A --> M
     E -->|plateau| H[Harvest successful observable traces]
-    H --> G[Run the same data verification gates]
-    G --> T[Train candidate model]
+    H --> G[Run the same verification gates]
+    G --> T[Train Candidate model]
     T --> C{Candidate beats active model?}
-    C -->|yes| P[Promote/hot-swap model]
+    C -->|yes| P[Promote and hot-swap model]
     C -->|no| R[Rollback model]
     P --> S[Slim Harness and reset counters]
     S --> F
     R --> F
 ```
 
-The current repository does not yet implement this outer/middle/inner loop. Its state and event names are frozen only to prevent sibling PRs from inventing incompatible protocols.
+The current repository only freezes the required State/Event vocabulary for this graph. No outer, middle, or inner Co-Evolution loop is reachable yet.
 
-## Directory → State Machine ownership
+## 6. Directory → State Machine ownership
 
 ```text
 post-training-rsi-pipeline/
-├── AGENTS.md                         repository-wide Agent contract and read order
-├── README.md                         current/target State Machines and top-level data flow
-├── configs/                          BOOT policy inputs and threshold configuration
+├── AGENTS.md                         repository Agent contract and read order
+├── README.md                         current/component/target State Machines and data flow
+├── configs/                          BOOT inputs and thresholds
 │   ├── pipeline.example.json
 │   └── rsi_policy_rules.json
 ├── docs/
 │   ├── README.md                     multi-hop documentation index
 │   ├── implementation-status.md      exact branch truth and gap registry
-│   ├── state-machine.md              transition/guard/evidence contracts
-│   ├── control-plane-contracts.md    schema-v1 record and serialization contract
+│   ├── state-machine.md              State guards, transitions, and evidence
+│   ├── control-plane-contracts.md    schema-v1 records and serialization
+│   ├── rsi-loop-policy.md            strict Peak/reject/rollback/stop policy
 │   ├── traceability-index.md         requirement → code → test → artifact → PR
 │   ├── stacked-pr-plan.md            molecular PR graph and Git Town admission
 │   ├── architecture.md               target PDF architecture
 │   └── productionization.md          real cloud/GPU/sandbox requirements
 ├── src/post_training_rsi/
-│   ├── __main__.py                   BOOT / CLI dispatch; currently only `demo`
+│   ├── __main__.py                   BOOT / supported CLI dispatch; only `demo`
 │   ├── config.py                     CONFIG_LOADED / CONFIG_REJECTED
-│   ├── control_plane/                shared schema; Contract only at this branch
+│   ├── control_plane/                shared schema; Contract only in runtime
 │   │   ├── enums.py                  State/Event/Stop/Action/Subject/Evidence taxonomy
 │   │   ├── records.py                Evidence/Decision/Snapshot/Transition records
-│   │   └── validation.py             exact fields and canonical JSON validation
-│   ├── models.py                     current data/result payloads
-│   ├── engine.py                     current transition coordinator
+│   │   └── validation.py             exact fields and canonical JSON
+│   ├── orchestration/                pure policy components; not runtime-composed
+│   │   └── rsi_policy.py             EVALUATE → promote/reject/rollback/abort/continue/stop
+│   ├── models.py                     current portable data/result payloads
+│   ├── engine.py                     current supported transition coordinator
 │   ├── generation.py                 current deterministic SYNTHESIZED fixture
-│   ├── cost.py                       BUDGET_CHARGED / budget and provider circuits
+│   ├── cost.py                       BUDGET_CHARGED and provider-circuit ledger
 │   ├── synthesis/                    target SYNTHESIZE provider boundary
-│   │   ├── prompts.py                versioned Teacher Prompt construction
-│   │   ├── runtime.py                Teacher protocol and SynthesisBatch
-│   │   └── teacher.py                mock/OpenAI-compatible Teacher clients
 │   ├── verification/                 VERIFIED / QUARANTINED
-│   │   ├── lexical.py                entropy, Distinct-N, TTR
-│   │   ├── semantic.py               novelty against accepted history
-│   │   ├── decontamination.py        Benchmark N-gram/LCS separation
-│   │   ├── safety.py                 safety/injection classification
-│   │   ├── code.py                   Python AST static checks
-│   │   └── pipeline.py               one decision per input record
 │   ├── training/                     TRAINED
-│   │   └── adapter.py                mock and external command contracts
 │   ├── serving/                      DEPLOYED; target SERVE + TEARDOWN
-│   │   └── adapter.py
-│   ├── evaluation/                   EVALUATED + failure-trace evidence
-│   │   └── adapter.py
-│   ├── lineage/                      evidence persistence; target Peak transaction
-│   │   ├── manifest.py
-│   │   └── store.py
+│   ├── evaluation/                   EVALUATED and failure evidence
+│   ├── lineage/                      current artifacts; target control/Peak transaction
 │   └── harness/                      target MUTATE_HARNESS / HARVEST_TRACES; placeholder
-├── tests/                             deterministic transition and contract evidence
+├── tests/
+│   ├── test_control_plane.py         strict schema/fail-closed contract evidence
+│   ├── test_rsi_policy.py            strict Peak/rollback/stop boundary evidence
+│   └── ...                           current runtime, verification, adapter, lineage tests
 └── .github/workflows/ci.yml          no-network/no-GPU verification gate
 ```
 
 ### Ownership matrix
 
-| Directory/module | State-machine responsibility | Input | Output | Forbidden responsibility |
+| Directory/module | State responsibility | Input | Output | Must not own |
 |---|---|---|---|---|
-| `config.py` | validate BOOT policy | JSON/defaults | immutable config | deciding promotion |
-| `control_plane/` | shared versioned state/event/evidence language | typed values / strict mappings | canonical records | adjacency, thresholds, SDK calls, persistence side effects |
-| `models.py` | current portable data/result payloads | typed values | serializable records | duplicate control taxonomies or external calls |
-| `engine.py` | transition order and policy | config + protocols | outcomes/terminal reason | provider-specific SDK logic |
+| `config.py` | validate BOOT policy | JSON/defaults | immutable config | transition decisions |
+| `control_plane/` | shared State/Event/Evidence representation | typed values / strict mappings | canonical records | adjacency, thresholds, SDK calls, persistence |
+| `orchestration/` | pure adjacency and decision policy | schema-v1 State + evidence-backed observations | Decisions/Transitions/Snapshots | provider SDK or artifact-store internals |
+| `engine.py` | supported execution composition | config + protocols | runtime outcomes | hidden provider-specific behavior |
 | `generation.py`, `synthesis/` | synthesis | hypothesis | examples + Teacher evidence | model promotion |
-| `verification/` | data admission | examples + benchmark/history | accepted/quarantine/records | score-based model decisions |
-| `training/` | candidate creation | exact accepted dataset/hash + parent | checkpoint + loss + artifact metadata | benchmark policy |
-| `serving/` | endpoint lifecycle | checkpoint | readiness/endpoint/teardown | deciding whether model is better |
-| `evaluation/` | benchmark evidence | checkpoint/endpoint/Harness | task scores + failures | updating Peak directly |
-| `lineage/` | immutable persistence | all upstream evidence | manifests, pointers, audit lookup | quality policy |
-| `harness/` | non-parametric search and trace harvest | failures/tasks/accepted Harness | candidate snapshots/training traces | direct model weight mutation |
-| `tests/` | transition/contract proof | deterministic fixtures | assertions | network/API/GPU dependency |
+| `verification/` | data admission | examples + benchmark/history | accepted/quarantine/audit | model-quality decisions |
+| `training/` | Candidate creation | exact Dataset/hash + parent | Checkpoint + loss + artifact metadata | benchmark policy |
+| `serving/` | endpoint lifecycle | Checkpoint | endpoint/readiness/teardown | promotion policy |
+| `evaluation/` | benchmark evidence | Checkpoint/endpoint/Harness | scores + failure traces | updating Peak directly |
+| `lineage/` | immutable persistence | upstream artifacts/control records | manifests, pointers, audit lookup | quality policy |
+| `harness/` | non-parametric search and trace harvest | failures/tasks/accepted Harness | snapshots/training traces | model weight updates |
+| `tests/` | deterministic proof | fixtures | assertions/evidence | network/API/GPU dependency |
 
-## Data flow and evidence flow
+## 7. Data flow and evidence flow
 
-### Current runnable data flow
+### Current supported runtime
 
 ```mermaid
 flowchart LR
@@ -265,7 +288,21 @@ flowchart LR
     E --> R[RSIRunResult report]
 ```
 
-The schema-v1 contract is currently tested beside this flow, not inserted into it.
+### Implemented Candidate policy component
+
+```mermaid
+flowchart LR
+    SS[EVALUATE StateSnapshot] --> P[RSIDecisionPolicy]
+    CO[CandidateObservation] --> P
+    EV[Evaluation + cost Evidence IDs] --> CO
+    P --> DR[DecisionRecord]
+    P --> TR[TransitionRecord]
+    P --> NS[Next StateSnapshot]
+    DR -. target persistence .-> LS[PR-04 Lineage Store]
+    TR -. target persistence .-> LS
+    NS -. target persistence .-> LS
+    NS -. target composition .-> RT[PR-07 Supported RSI Runtime]
+```
 
 ### Target complete evidence graph
 
@@ -275,14 +312,14 @@ flowchart TD
     DH --> TP[Teacher model/API + Prompt hash]
     TP --> RAW[raw.jsonl + synthesis_manifest.json]
     RAW --> FD[filter_audit.jsonl]
-    FD --> ACC[accepted.jsonl + dataset SHA-256]
+    FD --> ACC[accepted.jsonl + Dataset SHA-256]
     FD --> Q[quarantine.jsonl + reasons]
     ACC --> AR[optional approval request/decision]
     AR --> TJ[training job + idempotency key]
-    TJ --> CK[checkpoint artifact + SHA-256 + parent]
-    CK --> EP[ephemeral serving endpoint]
+    TJ --> CK[Checkpoint + artifact SHA-256 + parent]
+    CK --> EP[ephemeral endpoint]
     EP --> EV[task-family scores + failure traces]
-    EV --> DC[Peak comparison + approval + decision]
+    EV --> DC[Peak comparison + approval + Decision]
     DC --> LM[lineage_manifest.json + decision.json]
     LM --> PP[atomic peak_checkpoint.json]
     EV --> FT
@@ -296,9 +333,9 @@ flowchart TD
     TR --> SS[StateSnapshot]
 ```
 
-## Evidence bundle
+## 8. Evidence bundle
 
-Current iteration bundle:
+Current artifacts:
 
 ```text
 <workspace>/
@@ -314,7 +351,7 @@ Current iteration bundle:
 └── reports/rsi-run-summary.json
 ```
 
-Target integration additionally persists:
+Target persistence added by later PRs:
 
 ```text
 control/evidence/<evidence-id>.json
@@ -332,11 +369,11 @@ reports/regression-audit-<checkpoint-id>.json
 harness/<harness-version>.json
 ```
 
-These control paths are target persistence paths; PR #2 does not write them.
+PR #3 creates canonical in-memory policy records but does not write these target paths.
 
-## Verification order
+## 9. Verification order
 
-The order is intentional and cheap checks run first:
+The deterministic data gate runs cheap checks first:
 
 1. exact content-hash duplicate;
 2. Shannon entropy, Distinct-2, and Type-Token Ratio;
@@ -345,25 +382,26 @@ The order is intentional and cheap checks run first:
 5. prompt/role injection and safety checks;
 6. optional Python AST import/call allowlist.
 
-Only accepted examples enter semantic history and the accepted-dataset hash.
+Only accepted examples enter semantic history and the accepted-Dataset hash.
 
-## Control-plane invariants
+## 10. Cross-state invariants
 
 - Latest is not Peak.
-- No training record lacks a filter decision.
-- Rejected candidates never become parents.
-- Budget/retry/recursion/wall-time limits fail closed.
-- Quarantine and rejection are durable, traceable states.
-- Serving teardown occurs even when evaluation fails.
+- Promotion is strict: `candidate_score > peak_score + min_improvement`.
+- Active accepted Checkpoint and Peak cannot diverge silently.
+- Candidate parent is the last accepted/Peak Checkpoint, never a rejected Candidate.
+- Every synthesized input receives one verification decision.
+- Dataset hash covers the exact accepted bytes supplied to training.
+- Budget, retry, recursion, and wall-time boundaries fail closed.
+- Quarantine, rejection, rollback, and stop are durable, evidence-backed facts.
+- Serving teardown must run even when evaluation fails.
 - Human approval is explicit and immutable when enabled.
-- Shared cross-module semantics use `post-training-rsi.control/v1`, not free-form duplicate strings.
-- Unknown fields and incompatible schema versions fail closed.
-- Decisions and transitions reference durable evidence IDs.
-- The deterministic CI path never requires network, API keys, GPUs, or production endpoints.
+- Cross-module semantics use `post-training-rsi.control/v1`, not duplicate free-form strings.
+- Unknown fields, incompatible schemas, malformed evidence, and missing approvals fail closed.
 - Generated code is not executed in the core runtime.
 - Git changes are never an implicit side effect of Harness optimization.
 
-## Documentation and traceability index
+## 11. Documentation and traceability index
 
 | Need | Document |
 |---|---|
@@ -371,44 +409,42 @@ Only accepted examples enter semantic history and the accepted-dataset hash.
 | Exact current implementation and gaps | [`docs/implementation-status.md`](docs/implementation-status.md) |
 | State guards, transitions, and evidence | [`docs/state-machine.md`](docs/state-machine.md) |
 | Versioned control record schema | [`docs/control-plane-contracts.md`](docs/control-plane-contracts.md) |
-| PDF requirement mapping | [`docs/traceability-index.md`](docs/traceability-index.md) |
+| Candidate decision policy | [`docs/rsi-loop-policy.md`](docs/rsi-loop-policy.md) |
+| Source requirement mapping | [`docs/traceability-index.md`](docs/traceability-index.md) |
 | Molecular implementation/merge plan | [`docs/stacked-pr-plan.md`](docs/stacked-pr-plan.md) |
 | Target architecture | [`docs/architecture.md`](docs/architecture.md) |
 | Production controls | [`docs/productionization.md`](docs/productionization.md) |
 
-## Git Town and molecular Stack PRs
+## 12. Git Town and molecular Stack PRs
 
-Git Town is **not admitted** for this repository yet. There is no checked-in configuration, exact version pin, verified parent graph, isolated worktree evidence, dry-run/no-push rehearsal, or active stack manifest. Automation must fail closed rather than infer hierarchy from branch names.
-
-The active ordinary GitHub stack is:
+Git Town remains fail closed. The actual ordinary GitHub stack is:
 
 ```text
 feat/pdf-architecture
-└── PR #1  docs/agent-state-machine-index            Draft
-    └── PR #2  feat/state-domain-contracts           Draft
+└── PR #1  docs/agent-state-machine-index       Draft
+    └── PR #2  feat/state-domain-contracts      Draft
+        └── PR #3  feat/rsi-loop-policy         Draft
 ```
 
-The complete proposed review graph is:
+The remaining molecular graph is:
 
 ```text
-feat/pdf-architecture
-└── PR-01 docs/repository-contracts
-    └── PR-02 feat/state-domain-contracts
-        ├── PR-03 feat/rsi-loop-policy
-        ├── PR-04 feat/lineage-runtime
-        ├── PR-05 feat/adapter-runtime
-        └── PR-06 feat/hitl-approval
-             \__ PR-07 feat/rsi-convergence
-                  ├── PR-08 feat/harness-outer-loop
-                  └── PR-09 feat/trace-harvesting
-                       \__ PR-10 feat/model-inner-loop
-                            \__ PR-11 feat/coevolution-convergence
+PR-02 state/domain contracts
+├── PR-03 RSI loop policy                       active as PR #3
+├── PR-04 lineage runtime                       sibling from PR #2
+├── PR-05 adapter runtime                       sibling from PR #2
+└── PR-06 HITL approval                         sibling from PR #2
+     \__ PR-07 RSI convergence
+          ├── PR-08 Harness outer loop
+          └── PR-09 trace harvesting
+               \__ PR-10 model inner loop
+                    \__ PR-11 Co-Evolution convergence
 ```
 
-Shared interfaces are frozen in PR #2; path-disjoint work remains sibling PRs; PR-07 and PR-11 are explicit convergence PRs. Allowed paths, collision paths, required gates, merge order, and rebase owner are indexed in [`docs/stacked-pr-plan.md`](docs/stacked-pr-plan.md).
+Shared interfaces are frozen in PR #2; path-disjoint work remains sibling PRs; PR-07 and PR-11 are explicit convergence PRs. Allowed paths, collision paths, required gates, merge order, and rebase ownership are indexed in [`docs/stacked-pr-plan.md`](docs/stacked-pr-plan.md).
 
-## External adapter boundary
+## 13. External adapter boundary
 
-Current protocols allow external Teacher, trainer, evaluator, and serving implementations, but the supported CLI does not select them yet. Production adapters must remain behind stable typed or environment/JSON contracts, translate outputs into schema-v1 evidence records, and must not leak provider SDK details into transition policy.
+Current protocols allow external Teacher, trainer, evaluator, safety, and serving implementations, but the supported CLI does not select them. Production adapters must remain behind stable typed or environment/JSON contracts, translate outputs into schema-v1 evidence, and never leak provider SDK details into orchestration policy.
 
-See [`docs/productionization.md`](docs/productionization.md) before enabling real inference, training, code execution, or endpoint mutation.
+See [`docs/productionization.md`](docs/productionization.md) before enabling real inference, training, generated-code execution, production endpoints, or cloud mutation.
