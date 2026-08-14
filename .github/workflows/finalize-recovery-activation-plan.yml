@@ -1,0 +1,226 @@
+name: Finalize Recovery Activation Plan
+
+on:
+  push:
+    branches:
+      - feat/recovery-activation-plan
+    paths:
+      - ".github/workflows/finalize-recovery-activation-plan.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-recovery-activation-plan
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/recovery-activation-plan
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Apply deterministic typing and workflow hardening
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          cli = Path("src/post_training_rsi/recovery_activation/__main__.py")
+          text = cli.read_text(encoding="utf-8")
+          old = '''    if not isinstance(value, Mapping):\n        raise RecoveryActivationContractError(f"{label} must be a JSON object")\n    if any(not isinstance(key, str) for key in value):\n        raise RecoveryActivationContractError(f"{label} keys must be strings")\n    return value\n'''
+          new = '''    if not isinstance(value, dict):\n        raise RecoveryActivationContractError(f"{label} must be a JSON object")\n    result: dict[str, object] = {}\n    for key, item in value.items():\n        if not isinstance(key, str):\n            raise RecoveryActivationContractError(f"{label} keys must be strings")\n        result[key] = item\n    return result\n'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif new not in text:
+              raise SystemExit("activation CLI JSON normalization target is missing")
+          cli.write_text(text, encoding="utf-8")
+
+          contracts = Path("src/post_training_rsi/recovery_activation/contracts.py")
+          text = contracts.read_text(encoding="utf-8")
+          old = '''    if not isinstance(item, Mapping):\n        raise RecoveryActivationContractError(f"{field_name} must be an object")\n    if any(not isinstance(key, str) for key in item):\n        raise RecoveryActivationContractError(f"{field_name} keys must be strings")\n    return item\n'''
+          new = '''    if not isinstance(item, Mapping):\n        raise RecoveryActivationContractError(f"{field_name} must be an object")\n    result: dict[str, object] = {}\n    for key, nested in item.items():\n        if not isinstance(key, str):\n            raise RecoveryActivationContractError(f"{field_name} keys must be strings")\n        result[key] = nested\n    return result\n'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif new not in text:
+              raise SystemExit("activation contract mapping target is missing")
+          contracts.write_text(text, encoding="utf-8")
+
+          workflow = Path(".github/workflows/recovery-activation-plan.yml")
+          text = workflow.read_text(encoding="utf-8")
+          old = '''      - name: No-activation CLI assertion\n        shell: bash\n        run: |\n          set -euo pipefail\n          python -m post_training_rsi.recovery_activation --help > /tmp/recovery-help.txt\n          grep -q "build" /tmp/recovery-help.txt\n          grep -q "verify" /tmp/recovery-help.txt\n          grep -q "preflight" /tmp/recovery-help.txt\n          if grep -Eq "activate|apply|switch|resume|rollback" /tmp/recovery-help.txt; then\n            echo "Forbidden recovery execution command found in package CLI help"\n            exit 1\n          fi\n'''
+          new = '''      - name: No-activation CLI assertion\n        run: |\n          python - <<'PY'\n          import argparse\n\n          from post_training_rsi.recovery_activation.__main__ import _parser\n\n          parser = _parser()\n          subparsers = [\n              action\n              for action in parser._actions\n              if isinstance(action, argparse._SubParsersAction)\n          ]\n          if len(subparsers) != 1:\n              raise SystemExit("recovery CLI subparser contract is ambiguous")\n          commands = set(subparsers[0].choices)\n          expected = {"build", "verify", "preflight"}\n          if commands != expected:\n              raise SystemExit(\n                  f"recovery CLI commands mismatch: expected={sorted(expected)}, "\n                  f"actual={sorted(commands)}"\n              )\n          PY\n'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif new not in text:
+              raise SystemExit("focused workflow command assertion target is missing")
+          workflow.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Install
+        run: python -m pip install --upgrade pip && python -m pip install -e '.[dev]'
+
+      - name: Normalize and validate
+        run: |
+          ruff check --fix \
+            src/post_training_rsi/recovery_activation \
+            tests/test_recovery_activation.py \
+            tests/test_recovery_activation_cli.py \
+            tests/test_recovery_activation_manifest.py
+          ruff format \
+            src/post_training_rsi/recovery_activation \
+            tests/test_recovery_activation.py \
+            tests/test_recovery_activation_cli.py \
+            tests/test_recovery_activation_manifest.py
+          python -m compileall -q src tests
+          ruff check src tests
+          mypy src
+
+      - name: Focused activation matrix
+        run: |
+          python -m pytest -q \
+            tests/test_recovery_activation.py \
+            tests/test_recovery_activation_cli.py \
+            tests/test_recovery_activation_manifest.py
+
+      - name: Full repository gate
+        run: |
+          python -m pytest -q \
+            --cov=post_training_rsi \
+            --cov-report=term-missing \
+            --cov-fail-under=75
+
+      - name: Package CLI surface assertion
+        run: |
+          python - <<'PY'
+          import argparse
+
+          from post_training_rsi.recovery_activation.__main__ import _parser
+
+          parser = _parser()
+          subparsers = [
+              action
+              for action in parser._actions
+              if isinstance(action, argparse._SubParsersAction)
+          ]
+          commands = set(subparsers[0].choices)
+          expected = {"build", "verify", "preflight"}
+          if commands != expected:
+              raise SystemExit(
+                  f"recovery CLI commands mismatch: expected={sorted(expected)}, "
+                  f"actual={sorted(commands)}"
+              )
+          PY
+
+      - name: Publish exact validation evidence
+        run: |
+          mkdir -p docs/validation
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import subprocess
+          from pathlib import Path
+
+          validated_input_head = subprocess.check_output(
+              ["git", "rev-parse", "HEAD"], text=True
+          ).strip()
+          identity = {
+              "schema_version": "post-training-rsi.validation/v1",
+              "component": "recovery-activation-plan",
+              "branch": "feat/recovery-activation-plan",
+              "validated_input_head": validated_input_head,
+              "python": "3.11",
+              "gates": {
+                  "compileall": "PASS",
+                  "ruff": "PASS",
+                  "mypy": "PASS",
+                  "focused_activation_matrix": "PASS",
+                  "full_pytest_coverage_floor": "PASS",
+                  "package_cli_surface": "PASS",
+              },
+              "command_surface": ["build", "verify", "preflight"],
+              "terminal_status": "READY_FOR_HUMAN_EXECUTION",
+              "executed": False,
+              "non_claims": [
+                  "no live pointer mutation",
+                  "no automatic recovery",
+                  "no authenticated reviewer identity",
+                  "no remote backup or retention policy",
+                  "no production readiness",
+              ],
+          }
+          canonical = json.dumps(
+              identity,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          )
+          value = dict(identity)
+          value["evidence_sha256"] = hashlib.sha256(
+              canonical.encode("utf-8")
+          ).hexdigest()
+          Path("docs/validation/recovery-activation-plan-latest.json").write_text(
+              json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          lines = [
+              "# Recovery activation plan validation",
+              "",
+              "- Branch: `feat/recovery-activation-plan`",
+              f"- Validated input head: `{validated_input_head}`",
+              "- Python: `3.11`",
+              f"- Evidence SHA-256: `{value['evidence_sha256']}`",
+              "- Terminal status: `READY_FOR_HUMAN_EXECUTION`",
+              "- Executed: `false`",
+              "",
+              "## Passed gates",
+              "",
+              "```text",
+              "compileall",
+              "Ruff",
+              "mypy",
+              "focused activation matrix",
+              "full pytest coverage floor",
+              "package CLI surface: build / verify / preflight only",
+              "```",
+              "",
+              "## Non-claims",
+              "",
+              "No live pointer mutation, automatic recovery, authenticated reviewer identity, remote backup/retention policy, or production readiness was verified.",
+              "",
+          ]
+          Path("docs/validation/recovery-activation-plan-latest.md").write_text(
+              "\n".join(lines),
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Remove this temporary finalizer
+        run: rm -f .github/workflows/finalize-recovery-activation-plan.yml
+
+      - name: Commit finalized planning slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "ed3c"
+          git config user.email "mcnum01@gmail.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No finalization change to commit."
+            exit 0
+          fi
+          git commit -m "feat(recovery): finalize content-bound activation preflight"
+          git push origin HEAD:feat/recovery-activation-plan
