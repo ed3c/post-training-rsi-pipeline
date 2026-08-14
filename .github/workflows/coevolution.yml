@@ -1,0 +1,93 @@
+name: Co-Evolution Reference Runtime
+
+on:
+  pull_request:
+    paths:
+      - "src/post_training_rsi/harness/**"
+      - "src/post_training_rsi/orchestration/coevolution.py"
+      - "src/post_training_rsi/__main__.py"
+      - "tests/test_harness_outer_loop.py"
+      - "tests/test_trace_harvesting.py"
+      - "tests/test_model_inner_loop.py"
+      - "tests/test_coevolution*.py"
+      - "docs/**"
+      - "README.md"
+      - "AGENTS.md"
+      - ".github/workflows/coevolution.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+
+      - name: Static validation
+        run: |
+          python -m compileall -q src tests
+          ruff check src tests
+          mypy src
+
+      - name: Focused Co-Evolution matrix
+        run: |
+          python -m pytest -q \
+            tests/test_harness_outer_loop.py \
+            tests/test_trace_harvesting.py \
+            tests/test_model_inner_loop.py \
+            tests/test_coevolution.py \
+            tests/test_coevolution_cli.py \
+            tests/test_coevolution_approvals.py \
+            tests/test_documentation_contract.py
+
+      - name: Full suite and coverage floor
+        run: |
+          python -m pytest -q \
+            --cov=post_training_rsi \
+            --cov-report=term-missing \
+            --cov-fail-under=75
+
+      - name: Deterministic reference CLI smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          workspace="/tmp/coevolution-${{ matrix.python-version }}"
+          rm -rf "$workspace"
+          python -m post_training_rsi \
+            --workspace "$workspace" \
+            --run-id "ci-${{ matrix.python-version }}" \
+            coevolve >"/tmp/coevolution-${{ matrix.python-version }}.json"
+          python -m json.tool "/tmp/coevolution-${{ matrix.python-version }}.json" >/dev/null
+          python - <<PY
+          import json
+          from pathlib import Path
+
+          result = json.loads(
+              Path('/tmp/coevolution-${{ matrix.python-version }}.json').read_text()
+          )
+          assert result['status'] == 'STOPPED', result
+          assert result['state'] == 'STOPPED', result
+          assert result['completed_cycles'] == 2, result
+          assert Path(result['report_path']).is_file(), result
+          assert (Path('$workspace') / 'active_harness.json').is_file()
+          assert (Path('$workspace') / 'peak_checkpoint.json').is_file()
+          PY
