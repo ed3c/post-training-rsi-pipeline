@@ -1,0 +1,201 @@
+name: PR11 Rollback Dependency and Candidate Resume Repair
+
+on:
+  push:
+    branches:
+      - feat/coevolution-convergence
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/coevolution-convergence
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Repair rollback record pairing and Candidate reconstruction
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f"{path}: expected one replacement, found {count}: {old[:100]!r}"
+                  )
+              target.write_text(text.replace(old, new), encoding="utf-8")
+
+          replace_once(
+              "src/post_training_rsi/harness/model_inner_loop/policy.py",
+              (
+                  '            "training_cost_usd": candidate.training_cost_usd,\n'
+                  '            "active_model_score": self._active_model_score(current),\n'
+                  "        }\n"
+              ),
+              (
+                  '            "training_cost_usd": candidate.training_cost_usd,\n'
+                  '            "candidate_trained_at": candidate.trained_at,\n'
+                  '            "candidate_evidence_ids": list(candidate.evidence_ids),\n'
+                  '            "candidate_metadata": dict(candidate.metadata),\n'
+                  '            "active_model_score": self._active_model_score(current),\n'
+                  "        }\n"
+              ),
+          )
+
+          replace_once(
+              "src/post_training_rsi/orchestration/coevolution.py",
+              (
+                  "        rollback_snapshot = replace(\n"
+                  "            rollback_step.final_snapshot,\n"
+                  "            snapshot_id=_record_id(\n"
+                  "                \"snapshot-model-rollback-committed\",\n"
+                  "                self.run_id,\n"
+                  "                current.iteration,\n"
+                  "                decision.subject_id,\n"
+                  "            ),\n"
+                  "            iteration=current.iteration,\n"
+                  "        )\n"
+                  "        rollback_step = replace(\n"
+                  "            rollback_step,\n"
+                  "            snapshots=(rollback_snapshot,),\n"
+                  "        )\n"
+              ),
+              (
+                  "        rollback_decision_id = _record_id(\n"
+                  "            \"decision-model-rollback-committed\",\n"
+                  "            self.run_id,\n"
+                  "            current.iteration,\n"
+                  "            decision.subject_id,\n"
+                  "        )\n"
+                  "        rollback_decision = replace(\n"
+                  "            rollback_step.decisions[0],\n"
+                  "            decision_id=rollback_decision_id,\n"
+                  "            iteration=current.iteration,\n"
+                  "        )\n"
+                  "        rollback_transition = replace(\n"
+                  "            rollback_step.transitions[0],\n"
+                  "            transition_id=_record_id(\n"
+                  "                \"transition-model-rollback-committed\",\n"
+                  "                self.run_id,\n"
+                  "                current.iteration,\n"
+                  "                decision.subject_id,\n"
+                  "            ),\n"
+                  "            iteration=current.iteration,\n"
+                  "            decision_id=rollback_decision_id,\n"
+                  "            idempotency_key=_record_id(\n"
+                  "                \"idempotency-model-rollback-committed\",\n"
+                  "                self.run_id,\n"
+                  "                current.iteration,\n"
+                  "                decision.subject_id,\n"
+                  "            ),\n"
+                  "        )\n"
+                  "        rollback_snapshot = replace(\n"
+                  "            rollback_step.final_snapshot,\n"
+                  "            snapshot_id=_record_id(\n"
+                  "                \"snapshot-model-rollback-committed\",\n"
+                  "                self.run_id,\n"
+                  "                current.iteration,\n"
+                  "                decision.subject_id,\n"
+                  "            ),\n"
+                  "            iteration=current.iteration,\n"
+                  "            metadata={\n"
+                  "                **dict(rollback_step.final_snapshot.metadata),\n"
+                  "                \"decision_id\": rollback_decision_id,\n"
+                  "            },\n"
+                  "        )\n"
+                  "        rollback_step = replace(\n"
+                  "            rollback_step,\n"
+                  "            decisions=(rollback_decision,),\n"
+                  "            transitions=(rollback_transition,),\n"
+                  "            snapshots=(rollback_snapshot,),\n"
+                  "        )\n"
+              ),
+          )
+
+          path = Path("src/post_training_rsi/orchestration/coevolution.py")
+          text = path.read_text(encoding="utf-8")
+          old = (
+              "        from ..harness.model_inner_loop import ModelCandidateArtifact\n\n"
+              "        return ModelCandidateArtifact(\n"
+              "            checkpoint_id=snapshot.candidate_checkpoint_id or \"\",\n"
+              "            request_id=_metadata_str(snapshot, \"training_request_id\"),\n"
+              "            run_id=snapshot.run_id,\n"
+              "            cycle=snapshot.cycle,\n"
+              "            model_id=_metadata_str(snapshot, \"candidate_model_id\"),\n"
+              "            parent_checkpoint_id=_metadata_str(snapshot, \"parent_checkpoint_id\"),\n"
+              "            dataset_id=_metadata_str(snapshot, \"trace_dataset_id\"),\n"
+              "            dataset_sha256=_metadata_str(snapshot, \"trace_dataset_sha256\"),\n"
+              "            artifact_path=artifact_path,\n"
+              "            artifact_sha256=_metadata_str(snapshot, \"artifact_sha256\"),\n"
+              "            training_loss=float(snapshot.metadata.get(\"training_loss\", 0.0)),\n"
+              "            training_cost_usd=float(\n"
+              "                snapshot.metadata.get(\"training_cost_usd\", 0.0)\n"
+              "            ),\n"
+              "            trained_at=snapshot.entered_at,\n"
+              "            evidence_ids=snapshot.evidence_ids,\n"
+              "            metadata={\n"
+              "                \"expected_reference_score\": snapshot.candidate_score or 0.0,\n"
+              "            },\n"
+              "        )\n"
+          )
+          new = (
+              "        from ..harness.model_inner_loop import ModelCandidateArtifact\n\n"
+              "        raw_evidence_ids = snapshot.metadata.get(\n"
+              "            \"candidate_evidence_ids\"\n"
+              "        )\n"
+              "        if not isinstance(raw_evidence_ids, list) or not all(\n"
+              "            isinstance(item, str) for item in raw_evidence_ids\n"
+              "        ):\n"
+              "            raise RuntimeError(\n"
+              "                \"Candidate Snapshot is missing exact evidence IDs\"\n"
+              "            )\n"
+              "        raw_candidate_metadata = snapshot.metadata.get(\n"
+              "            \"candidate_metadata\"\n"
+              "        )\n"
+              "        if not isinstance(raw_candidate_metadata, dict):\n"
+              "            raise RuntimeError(\n"
+              "                \"Candidate Snapshot is missing exact Candidate metadata\"\n"
+              "            )\n"
+              "        return ModelCandidateArtifact(\n"
+              "            checkpoint_id=snapshot.candidate_checkpoint_id or \"\",\n"
+              "            request_id=_metadata_str(snapshot, \"training_request_id\"),\n"
+              "            run_id=snapshot.run_id,\n"
+              "            cycle=snapshot.cycle,\n"
+              "            model_id=_metadata_str(snapshot, \"candidate_model_id\"),\n"
+              "            parent_checkpoint_id=_metadata_str(snapshot, \"parent_checkpoint_id\"),\n"
+              "            dataset_id=_metadata_str(snapshot, \"trace_dataset_id\"),\n"
+              "            dataset_sha256=_metadata_str(snapshot, \"trace_dataset_sha256\"),\n"
+              "            artifact_path=artifact_path,\n"
+              "            artifact_sha256=_metadata_str(snapshot, \"artifact_sha256\"),\n"
+              "            training_loss=float(snapshot.metadata.get(\"training_loss\", 0.0)),\n"
+              "            training_cost_usd=float(\n"
+              "                snapshot.metadata.get(\"training_cost_usd\", 0.0)\n"
+              "            ),\n"
+              "            trained_at=_metadata_str(snapshot, \"candidate_trained_at\"),\n"
+              "            evidence_ids=tuple(raw_evidence_ids),\n"
+              "            metadata=dict(raw_candidate_metadata),\n"
+              "        )\n"
+          )
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f"candidate reconstruction block matched {count} times")
+          path.write_text(text.replace(old, new), encoding="utf-8")
+          PY
+
+      - name: Commit repair
+        run: |
+          git config user.name 'ed3c'
+          git config user.email 'mcnum01@gmail.com'
+          git add \
+            src/post_training_rsi/harness/model_inner_loop/policy.py \
+            src/post_training_rsi/orchestration/coevolution.py
+          git commit -m 'fix(pr11): preserve rollback pairing and exact Candidate resume'
+          git push origin HEAD:feat/coevolution-convergence
