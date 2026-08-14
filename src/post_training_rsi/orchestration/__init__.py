@@ -1,5 +1,10 @@
-"""Provider-neutral orchestration policy and converged RSI components."""
+"""Provider-neutral orchestration policy and converged runtime components."""
 
+from .coevolution import (
+    CoEvolutionController,
+    CoEvolutionRunResult,
+    build_reference_coevolution_controller,
+)
 from .converged import (
     ConvergedRSIController,
     ConvergedRSIResult,
@@ -15,6 +20,8 @@ from .rsi_policy import (
 
 __all__ = [
     "CandidateObservation",
+    "CoEvolutionController",
+    "CoEvolutionRunResult",
     "ConvergedRSIController",
     "ConvergedRSIResult",
     "PolicyInvariantError",
@@ -22,4 +29,5 @@ __all__ = [
     "RSIPolicyLimits",
     "RSIPolicyStep",
     "build_converged_rsi_controller",
+    "build_reference_coevolution_controller",
 ]
