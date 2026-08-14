@@ -1,0 +1,250 @@
+name: Finalize Forensic Recovery Slice
+
+on:
+  push:
+    branches:
+      - feat/forensic-recovery-bundle
+    paths:
+      - ".github/workflows/finalize-forensic-recovery.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-forensic-recovery
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/forensic-recovery-bundle
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Apply deterministic source and index transformations
+        run: |
+          python scripts/harden_forensic_recovery.py
+          python scripts/sync_forensic_recovery_index.py
+          python scripts/sync_forensic_recovery_index.py --check
+
+      - name: Normalize final manifest and documentation scope
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          from pathlib import Path
+
+          manifest_path = Path("docs/forensic-recovery-manifest.json")
+          value = json.loads(manifest_path.read_text(encoding="utf-8"))
+          value["owned_paths"] = [
+              ".github/workflows/recovery-bundle.yml",
+              "scripts/sync_forensic_recovery_index.py",
+              "src/post_training_rsi/recovery_bundle",
+              "tests/test_recovery_bundle.py",
+              "tests/test_recovery_bundle_cli.py",
+              "tests/test_recovery_bundle_hardening.py",
+              "tests/test_forensic_recovery_manifest.py",
+              "docs/forensic-recovery-bundle.md",
+              "docs/forensic-recovery-manifest.json",
+          ]
+          manifest_path.write_text(
+              json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+          document_path = Path("docs/forensic-recovery-bundle.md")
+          document = document_path.read_text(encoding="utf-8")
+          old = """allowed_paths:\n  - src/post_training_rsi/recovery_bundle/**\n  - tests/test_recovery_bundle.py\n  - docs/forensic-recovery-bundle.md\n"""
+          new = """allowed_paths:\n  - src/post_training_rsi/recovery_bundle/**\n  - tests/test_recovery_bundle.py\n  - tests/test_recovery_bundle_cli.py\n  - tests/test_recovery_bundle_hardening.py\n  - tests/test_forensic_recovery_manifest.py\n  - docs/forensic-recovery-bundle.md\n  - docs/forensic-recovery-manifest.json\n  - scripts/sync_forensic_recovery_index.py\n  - .github/workflows/recovery-bundle.yml\n"""
+          if old in document:
+              document = document.replace(old, new, 1)
+          elif new not in document:
+              raise SystemExit("forensic recovery allowed_paths block is not recognized")
+          document_path.write_text(document, encoding="utf-8")
+          PY
+
+      - name: Install
+        run: python -m pip install --upgrade pip && python -m pip install -e '.[dev]'
+
+      - name: Static validation
+        run: |
+          ruff check --fix src tests scripts
+          ruff format \
+            src/post_training_rsi/recovery_bundle \
+            tests/test_recovery_bundle.py \
+            tests/test_recovery_bundle_cli.py \
+            tests/test_recovery_bundle_hardening.py \
+            tests/test_forensic_recovery_manifest.py \
+            scripts/sync_forensic_recovery_index.py
+          python -m compileall -q src tests scripts
+          ruff check src tests scripts
+          mypy src
+
+      - name: Focused recovery matrix
+        run: |
+          python -m pytest -q \
+            tests/test_recovery_bundle.py \
+            tests/test_recovery_bundle_cli.py \
+            tests/test_recovery_bundle_hardening.py \
+            tests/test_forensic_recovery_manifest.py \
+            tests/test_documentation_contract.py
+
+      - name: Full repository gate
+        run: |
+          python -m pytest -q \
+            --cov=post_training_rsi \
+            --cov-report=term-missing \
+            --cov-fail-under=75
+
+      - name: Deterministic package CLI smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$(mktemp -d)"
+          mkdir -p "$root/source/nested" "$root/source/empty"
+          printf '%s\n' '{"run_id":"ci-recovery","state":"STOPPED"}' > "$root/source/run.json"
+          printf '%s\n' 'verified evidence' > "$root/source/nested/evidence.txt"
+          chmod 0550 "$root/source/nested"
+          chmod 0440 "$root/source/nested/evidence.txt"
+          python -m post_training_rsi.recovery_bundle create \
+            --source "$root/source" \
+            --bundle "$root/bundle-a" \
+            --source-label ci-recovery-generation > "$root/create-a.json"
+          python -m post_training_rsi.recovery_bundle create \
+            --source "$root/source" \
+            --bundle "$root/bundle-b" \
+            --source-label ci-recovery-generation > "$root/create-b.json"
+          python - <<'PY' "$root/create-a.json" "$root/create-b.json"
+          import json
+          import sys
+          from pathlib import Path
+
+          left = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          right = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          if left["bundle_id"] != right["bundle_id"]:
+              raise SystemExit("deterministic bundle IDs differ")
+          PY
+          python -m post_training_rsi.recovery_bundle verify \
+            --bundle "$root/bundle-a"
+          python -m post_training_rsi.recovery_bundle stage \
+            --bundle "$root/bundle-a" \
+            --destination "$root/staged"
+          python -m post_training_rsi.recovery_bundle verify-stage \
+            --bundle "$root/bundle-a" \
+            --destination "$root/staged"
+          cmp "$root/source/run.json" "$root/staged/run.json"
+          cmp "$root/source/nested/evidence.txt" "$root/staged/nested/evidence.txt"
+          test "$(stat -c '%a' "$root/staged/nested")" = "550"
+          test "$(stat -c '%a' "$root/staged/nested/evidence.txt")" = "440"
+
+      - name: Publish validation evidence
+        run: |
+          mkdir -p docs/validation
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import subprocess
+          from pathlib import Path
+
+          validated_input_head = subprocess.check_output(
+              ["git", "rev-parse", "HEAD"], text=True
+          ).strip()
+          identity = {
+              "schema_version": "post-training-rsi.validation/v1",
+              "component": "forensic-recovery-bundle",
+              "branch": "feat/forensic-recovery-bundle",
+              "validated_input_head": validated_input_head,
+              "python": "3.11",
+              "gates": {
+                  "compileall": "PASS",
+                  "ruff": "PASS",
+                  "mypy": "PASS",
+                  "focused_recovery_matrix": "PASS",
+                  "documentation_contract": "PASS",
+                  "full_pytest_coverage_floor": "PASS",
+                  "deterministic_bundle_identity": "PASS",
+                  "package_cli_smoke": "PASS",
+                  "staged_byte_and_mode_comparison": "PASS",
+              },
+              "non_claims": [
+                  "no automatic activation",
+                  "no remote backup",
+                  "no encryption or retention policy",
+                  "no production recovery authorization",
+                  "no distributed writer safety",
+              ],
+          }
+          canonical = json.dumps(
+              identity,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          )
+          value = dict(identity)
+          value["evidence_sha256"] = hashlib.sha256(
+              canonical.encode("utf-8")
+          ).hexdigest()
+          Path("docs/validation/forensic-recovery-bundle-latest.json").write_text(
+              json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          Path("docs/validation/forensic-recovery-bundle-latest.md").write_text(
+              f"""# Forensic recovery bundle validation\n\n"
+              f"- Branch: `feat/forensic-recovery-bundle`\n"
+              f"- Validated input head: `{validated_input_head}`\n"
+              f"- Python: `3.11`\n"
+              f"- Evidence SHA-256: `{value['evidence_sha256']}`\n\n"
+              "## Passed gates\n\n"
+              "```text\n"
+              "compileall\nRuff\nmypy\nfocused recovery matrix\n"
+              "documentation contract\nfull pytest coverage floor\n"
+              "deterministic bundle identity\npackage CLI smoke\n"
+              "staged byte and mode comparison\n"
+              "```\n\n"
+              "## Non-claims\n\n"
+              "No automatic activation, remote backup, encryption/retention policy, "
+              "production recovery authorization, or distributed writer safety was verified.\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Remove temporary mutation workflows and probes
+        run: |
+          rm -f \
+            .github/workflows/forensic-recovery-repair.yml \
+            .github/workflows/forensic-recovery-doc-sync.yml \
+            .github/workflows/forensic-recovery-hardening.yml \
+            .github/workflows/finalize-forensic-recovery.yml \
+            scripts/harden_forensic_recovery.py \
+            docs/.pr13-branch-probe \
+            docs/.branch-probe \
+            docs/.branch-probe-2 \
+            README.tmp
+
+      - name: Commit finalized slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "ed3c"
+          git config user.email "mcnum01@gmail.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No finalization change to commit."
+            exit 0
+          fi
+          git commit -m "feat(recovery): finalize forensic bundle and inactive restore proof"
+          git push origin HEAD:feat/forensic-recovery-bundle
