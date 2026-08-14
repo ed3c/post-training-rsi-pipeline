@@ -137,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
             reviewer_id=args.reviewer,
             reviewer_role=args.role,
             reason=args.reason,
-            decided_at=args.decided_at or _utc_now(),
+            decided_at=args.decided_at,
         )
         _print_json(
             {
@@ -261,10 +261,14 @@ def _approval_rows(
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for request_id in service.store.list_request_ids():
-        status = service.status(request_id, as_of=_utc_now())
+        request = service.store.load_request(request_id)
+        as_of = _not_before_timestamp(_utc_now(), request.requested_at)
+        if service.store.has_decision(request_id):
+            decision = service.store.load_decision(request_id)
+            as_of = _not_before_timestamp(as_of, decision.decided_at)
+        status = service.status(request_id, as_of=as_of)
         if not include_decided and status.state.value not in {"PENDING", "EXPIRED"}:
             continue
-        request = service.store.load_request(request_id)
         rows.append(
             {
                 "request_id": request_id,
@@ -313,6 +317,12 @@ def _print_json(value: dict[str, Any]) -> None:
             allow_nan=False,
         )
     )
+
+
+def _not_before_timestamp(value: str, minimum: str) -> str:
+    value_time = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    minimum_time = datetime.fromisoformat(minimum.replace("Z", "+00:00"))
+    return value if value_time >= minimum_time else minimum
 
 
 def _utc_now() -> str:

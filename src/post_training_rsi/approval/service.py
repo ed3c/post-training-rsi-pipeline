@@ -177,7 +177,13 @@ class ApprovalService:
             raise ApprovalContractError(
                 f"reviewer role {reviewer_role!r} is not authorized"
             )
-        timestamp = normalize_timestamp(decided_at or self.clock())
+        if decided_at is None:
+            timestamp = _not_before(
+                normalize_timestamp(self.clock()),
+                request.requested_at,
+            )
+        else:
+            timestamp = normalize_timestamp(decided_at)
         if _is_expired(request, timestamp):
             raise ApprovalNotGranted(
                 request_id=request.request_id,
@@ -502,6 +508,12 @@ def _is_expired(request: ApprovalRequest, timestamp: str) -> bool:
 
 def _parse_timestamp(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _not_before(value: str, minimum: str) -> str:
+    if _parse_timestamp(value) >= _parse_timestamp(minimum):
+        return value
+    return minimum
 
 
 def _utc_now() -> str:

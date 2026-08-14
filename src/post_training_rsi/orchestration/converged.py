@@ -6,7 +6,7 @@ import math
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any, Callable
 
 from ..adapter_runtime.errors import AdapterError
 from ..adapter_runtime.factory import AdapterRuntime, build_adapter_runtime
@@ -15,7 +15,6 @@ from ..adapter_runtime.lifecycle import evaluate_checkpoint_with_serving
 from ..approval import (
     ApprovalCandidate,
     ApprovalDecisionBundle,
-    ApprovalNotGranted,
     ApprovalPolicy,
     ApprovalService,
     ApprovalState,
@@ -60,7 +59,6 @@ from .rsi_policy import (
 )
 from .run_state import (
     LogicalRunClock,
-    RunMetadata,
     RunMetadataStore,
     config_sha256,
     latest_snapshot,
@@ -230,7 +228,6 @@ class ConvergedRSIController:
             raise LineageIntegrityError(
                 "Peak exists but no resumable StateSnapshot was found"
             )
-        iteration = 0
         timestamp = self.clock.at(iteration=0, offset_seconds=1)
         descriptor = {
             "format": "model-reference-v1",
@@ -402,6 +399,7 @@ class ConvergedRSIController:
             status="PEAK",
             artifact_sha256=artifact_sha256,
             control_transaction_id=transaction.transaction_id,
+            created_at=next_timestamp,
         )
         bundle = self.checkpoint_store.commit(
             checkpoint_payload={
@@ -419,22 +417,26 @@ class ConvergedRSIController:
                 "code_git_commit": self.metadata.code_git_commit,
                 "metadata": {"role": "initial-active-model"},
             },
+            checkpoint_id=checkpoint_id,
+            run_id=self.run_id,
+            iteration=0,
             lineage_manifest=lineage,
             artifact_path=artifact_path,
+            artifact_uri=artifact_path.resolve().as_uri(),
             control_transaction_id=transaction.transaction_id,
-            committed_at=next_timestamp,
+            created_at=next_timestamp,
         )
-        self.peak_store.update(
-            pointer=PeakPointer(
+        self.peak_store.compare_and_swap(
+            PeakPointer(
                 checkpoint_id=checkpoint_id,
                 previous_checkpoint_id=None,
                 run_id=self.run_id,
                 iteration=0,
                 model_id=self.config.model_id,
                 score=self.config.rsi.initial_score,
-                bundle_manifest_sha256=bundle.manifest_sha256,
+                checkpoint_bundle_sha256=bundle.manifest_sha256,
                 control_transaction_id=transaction.transaction_id,
-                promotion_decision_id=promote_decision.decision_id,
+                decision_id=promote_decision.decision_id,
                 updated_at=next_timestamp,
             ),
             expected_previous_checkpoint_id=None,
@@ -784,7 +786,7 @@ class ConvergedRSIController:
         )
         status = self.approval_service.status(
             request_id,
-            as_of=self.now(),
+            as_of=_not_before_timestamp(self.now(), pending.entered_at),
         )
         if status.state is ApprovalState.PENDING:
             return pending
@@ -1130,7 +1132,10 @@ class ConvergedRSIController:
             pending.metadata,
             "approval_request_sha256",
         )
-        status = self.approval_service.status(request_id, as_of=self.now())
+        status = self.approval_service.status(
+            request_id,
+            as_of=_not_before_timestamp(self.now(), pending.entered_at),
+        )
         if status.state is ApprovalState.PENDING:
             return pending
         if status.state is ApprovalState.APPROVED:
@@ -1226,6 +1231,7 @@ class ConvergedRSIController:
                 "primary_decision_action": primary.action.value,
                 "checkpoint_status": _checkpoint_status(primary.action),
                 "decision_id": final.metadata.get("decision_id"),
+                "source_iteration": iteration,
                 "materialize_checkpoint": True,
             }
         )
@@ -1233,8 +1239,10 @@ class ConvergedRSIController:
             snapshot_id=_id(
                 "snapshot",
                 self.run_id,
-                final.iteration,
-                f"{transaction_tag}-materialized",
+                iteration,
+                transaction_tag,
+                training.checkpoint_id,
+                "materialized",
             ),
             run_id=final.run_id,
             iteration=final.iteration,
@@ -1301,6 +1309,18 @@ class ConvergedRSIController:
     ) -> CheckpointBundle:
         context = snapshot.metadata
         transaction_id = _metadata_string(context, "control_transaction_id")
+        transaction = self.control_store.load_transaction(transaction_id)
+        source_iteration = transaction.iteration
+        training_iteration = training.metadata.get("iteration")
+        if training_iteration is not None:
+            if (
+                isinstance(training_iteration, bool)
+                or not isinstance(training_iteration, int)
+                or training_iteration != source_iteration
+            ):
+                raise LineageIntegrityError(
+                    "training iteration does not match the committed control transaction"
+                )
         decision_id = _metadata_string(context, "primary_decision_id")
         action = DecisionAction(
             _metadata_string(context, "primary_decision_action")
@@ -1310,7 +1330,7 @@ class ConvergedRSIController:
         lineage = LineageManifest(
             checkpoint_id=training.checkpoint_id,
             run_id=self.run_id,
-            iteration=training.metadata.get("iteration", snapshot.iteration),
+            iteration=source_iteration,
             model_id=training.model_id,
             parent_checkpoint_id=training.parent_checkpoint_id,
             dataset_commit_hash=training.dataset_hash,
@@ -1336,15 +1356,13 @@ class ConvergedRSIController:
             status=status,
             artifact_sha256=artifact_sha256,
             control_transaction_id=transaction_id,
+            created_at=snapshot.entered_at,
         )
         bundle = self.checkpoint_store.commit(
             checkpoint_payload={
                 "checkpoint_id": training.checkpoint_id,
                 "run_id": self.run_id,
-                "iteration": snapshot.metadata.get(
-                    "source_iteration",
-                    training.metadata.get("iteration", snapshot.iteration),
-                ),
+                "iteration": source_iteration,
                 "model_id": training.model_id,
                 "parent_checkpoint_id": training.parent_checkpoint_id,
                 "dataset_commit_hash": training.dataset_hash,
@@ -1363,24 +1381,28 @@ class ConvergedRSIController:
                     "acceptance_rate": context.get("acceptance_rate"),
                 },
             },
+            checkpoint_id=training.checkpoint_id,
+            run_id=self.run_id,
+            iteration=lineage.iteration,
             lineage_manifest=lineage,
             artifact_path=training.checkpoint_path,
+            artifact_uri=training.checkpoint_path.resolve().as_uri(),
             control_transaction_id=transaction_id,
-            committed_at=snapshot.entered_at,
+            created_at=snapshot.entered_at,
         )
         decision = self.control_store.load_decision(decision_id)
         if action is DecisionAction.PROMOTE:
-            self.peak_store.update(
-                pointer=PeakPointer(
+            self.peak_store.compare_and_swap(
+                PeakPointer(
                     checkpoint_id=training.checkpoint_id,
                     previous_checkpoint_id=training.parent_checkpoint_id,
                     run_id=self.run_id,
                     iteration=lineage.iteration,
                     model_id=training.model_id,
                     score=evaluation.score,
-                    bundle_manifest_sha256=bundle.manifest_sha256,
+                    checkpoint_bundle_sha256=bundle.manifest_sha256,
                     control_transaction_id=transaction_id,
-                    promotion_decision_id=decision_id,
+                    decision_id=decision_id,
                     updated_at=decision.created_at,
                 ),
                 expected_previous_checkpoint_id=training.parent_checkpoint_id,
@@ -1388,12 +1410,6 @@ class ConvergedRSIController:
         elif action in {DecisionAction.REJECT, DecisionAction.ROLLBACK}:
             self.quarantine_store.commit(
                 QuarantineMarker(
-                    marker_id=_id(
-                        "quarantine",
-                        self.run_id,
-                        lineage.iteration,
-                        training.checkpoint_id,
-                    ),
                     run_id=self.run_id,
                     iteration=lineage.iteration,
                     subject_type=DecisionSubject.CHECKPOINT,
@@ -1401,12 +1417,9 @@ class ConvergedRSIController:
                     decision_id=decision_id,
                     control_transaction_id=transaction_id,
                     reason_code=decision.reason_code,
+                    reason=decision.reason,
                     evidence_ids=decision.evidence_ids,
                     created_at=decision.created_at,
-                    metadata={
-                        "checkpoint_status": status,
-                        "benchmark_score": evaluation.score,
-                    },
                 )
             )
         return bundle
@@ -1726,12 +1739,6 @@ class ConvergedRSIController:
         )
         self.quarantine_store.commit(
             QuarantineMarker(
-                marker_id=_id(
-                    "quarantine",
-                    self.run_id,
-                    iteration,
-                    _metadata_string(context, "dataset_id"),
-                ),
                 run_id=self.run_id,
                 iteration=iteration,
                 subject_type=DecisionSubject.DATASET,
@@ -1739,12 +1746,9 @@ class ConvergedRSIController:
                 decision_id=quarantine_decision.decision_id,
                 control_transaction_id=transaction_id,
                 reason_code=quarantine_decision.reason_code,
+                reason=quarantine_decision.reason,
                 evidence_ids=quarantine_decision.evidence_ids,
                 created_at=quarantine_decision.created_at,
-                metadata={
-                    "dataset_hash": context["dataset_hash"],
-                    "acceptance_rate": context["acceptance_rate"],
-                },
             )
         )
         return stopped_snapshot
@@ -1881,12 +1885,6 @@ class ConvergedRSIController:
         if subject_type is DecisionSubject.DATASET:
             self.quarantine_store.commit(
                 QuarantineMarker(
-                    marker_id=_id(
-                        "quarantine",
-                        self.run_id,
-                        pending.iteration,
-                        decision.subject_id,
-                    ),
                     run_id=self.run_id,
                     iteration=pending.iteration,
                     subject_type=DecisionSubject.DATASET,
@@ -1894,9 +1892,9 @@ class ConvergedRSIController:
                     decision_id=decision.decision_id,
                     control_transaction_id=transaction_id,
                     reason_code=decision.reason_code,
+                    reason=decision.reason,
                     evidence_ids=decision.evidence_ids,
                     created_at=decision.created_at,
-                    metadata={"approval_state": status.value},
                 )
             )
         elif pending.candidate_checkpoint_id is not None:
@@ -2396,6 +2394,22 @@ def _training_from_metadata(metadata: dict[str, Any]) -> TrainingResult:
         raise LineageIntegrityError(
             "parent_checkpoint_id metadata must be a string or null"
         )
+    training_metadata: dict[str, Any] = {
+        "artifact_sha256": _metadata_string(
+            metadata,
+            "artifact_sha256",
+        ),
+    }
+    if "source_iteration" in metadata:
+        training_metadata["iteration"] = _metadata_int(
+            metadata,
+            "source_iteration",
+        )
+    elif "iteration" in metadata:
+        training_metadata["iteration"] = _metadata_int(
+            metadata,
+            "iteration",
+        )
     return TrainingResult(
         checkpoint_id=_metadata_string(metadata, "checkpoint_id"),
         checkpoint_path=Path(_metadata_string(metadata, "checkpoint_path")),
@@ -2403,15 +2417,7 @@ def _training_from_metadata(metadata: dict[str, Any]) -> TrainingResult:
         parent_checkpoint_id=parent,
         dataset_hash=_metadata_string(metadata, "dataset_hash"),
         final_loss=_metadata_float(metadata, "final_loss"),
-        metadata={
-            "iteration": _metadata_int(metadata, "source_iteration", default=None)
-            if "source_iteration" in metadata
-            else _metadata_int(metadata, "iteration", default=0),
-            "artifact_sha256": _metadata_string(
-                metadata,
-                "artifact_sha256",
-            ),
-        },
+        metadata=training_metadata,
     )
 
 
@@ -2512,6 +2518,16 @@ def _budget_stop_reason(message: str) -> StopReason:
         if message.startswith("iteration")
         else StopReason.TOTAL_BUDGET_EXCEEDED
     )
+
+
+def _not_before_timestamp(value: str, minimum: str) -> str:
+    normalized_value = datetime.fromisoformat(
+        value.replace("Z", "+00:00")
+    )
+    normalized_minimum = datetime.fromisoformat(
+        minimum.replace("Z", "+00:00")
+    )
+    return value if normalized_value >= normalized_minimum else minimum
 
 
 def _utc_now() -> str:

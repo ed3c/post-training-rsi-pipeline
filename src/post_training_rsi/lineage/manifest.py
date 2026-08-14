@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
@@ -23,7 +23,11 @@ class LineageManifest:
     code_git_commit: str
     iteration: int
     status: str
-    created_at: str
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    run_id: str = ""
+    benchmark_id: str = ""
+    artifact_sha256: str | None = None
+    control_transaction_id: str | None = None
 
     @classmethod
     def create(
@@ -44,6 +48,10 @@ class LineageManifest:
         iteration: int,
         status: str,
         code_git_commit: str | None = None,
+        run_id: str = "",
+        benchmark_id: str = "",
+        artifact_sha256: str | None = None,
+        control_transaction_id: str | None = None,
     ) -> LineageManifest:
         return cls(
             checkpoint_id=checkpoint_id,
@@ -62,6 +70,10 @@ class LineageManifest:
             iteration=iteration,
             status=status,
             created_at=datetime.now(UTC).isoformat(),
+            run_id=run_id,
+            benchmark_id=benchmark_id,
+            artifact_sha256=artifact_sha256,
+            control_transaction_id=control_transaction_id,
         )
 
     def to_dict(self) -> dict[str, Any]:
