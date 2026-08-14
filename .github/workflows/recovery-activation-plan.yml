@@ -1,0 +1,75 @@
+name: Recovery Activation Plan
+
+on:
+  pull_request:
+    paths:
+      - "src/post_training_rsi/recovery_activation/**"
+      - "tests/test_recovery_activation.py"
+      - "tests/test_recovery_activation_cli.py"
+      - "tests/test_recovery_activation_manifest.py"
+      - "docs/recovery-activation-plan.md"
+      - "docs/recovery-activation-manifest.json"
+      - ".github/workflows/recovery-activation-plan.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recovery-activation:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: python -m pip install --upgrade pip && python -m pip install -e '.[dev]'
+
+      - name: Static validation
+        run: |
+          python -m compileall -q src tests
+          ruff check src tests
+          # The repository-wide mypy baseline still carries legacy errors from
+          # earlier slices, and config.py is in this package's import closure.
+          # follow-imports=silent keeps every error inside the boundary this job
+          # owns while silencing the modules it merely imports; the wider debt
+          # stays separately tracked.
+          mypy --follow-imports=silent src/post_training_rsi/recovery_activation
+
+      - name: Focused tests
+        run: |
+          python -m pytest -q \
+            tests/test_recovery_activation.py \
+            tests/test_recovery_activation_cli.py \
+            tests/test_recovery_activation_manifest.py
+
+      - name: No-activation CLI assertion
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Assert the registered subcommand set, not the help prose. Grepping
+          # the help text for forbidden verbs fails on its own description,
+          # which denies executing a pointer switch by naming it.
+          python - <<'PY'
+          from post_training_rsi.recovery_activation.__main__ import _parser
+
+          registered = set()
+          for action in _parser()._actions:
+              choices = getattr(action, "choices", None)
+              if isinstance(choices, dict):
+                  registered.update(choices)
+          expected = {"build", "verify", "preflight"}
+          if registered != expected:
+              raise SystemExit(
+                  f"package CLI exposes {sorted(registered)}, expected {sorted(expected)}"
+              )
+          PY
