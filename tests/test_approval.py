@@ -147,8 +147,9 @@ def test_approved_dataset_produces_control_decision_and_gate_passes(
     assert reviewed.decision_evidence.metadata["reviewer_role"] == "researcher"
 
 
-def test_denied_checkpoint_fails_closed_and_emits_rejection() -> None:
-    tmp_path = Path(pytest.ensuretemp("approval-denied"))
+def test_denied_checkpoint_fails_closed_and_emits_rejection(
+    tmp_path: Path,
+) -> None:
     service = _service(tmp_path)
     request = service.create_request(
         run_id="run-001",
