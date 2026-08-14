@@ -1,0 +1,205 @@
+name: Reconcile Recovery Activation Plan
+
+on:
+  push:
+    branches:
+      - feat/recovery-activation-plan
+    paths:
+      - ".github/workflows/reconcile-recovery-activation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-recovery-activation-plan
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/recovery-activation-plan
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Reconcile source, workflow, scope, and indexes
+        run: python scripts/reconcile_recovery_activation.py
+
+      - name: Create uncommitted validation placeholders
+        run: |
+          mkdir -p docs/validation
+          printf '%s\n' '{"status":"PENDING","committed":false}' > docs/validation/recovery-activation-plan-latest.json
+          printf '%s\n' '# Recovery activation validation pending' > docs/validation/recovery-activation-plan-latest.md
+
+      - name: Install
+        run: python -m pip install --upgrade pip && python -m pip install -e '.[dev]'
+
+      - name: Normalize and static validation
+        run: |
+          ruff check --fix src tests scripts
+          ruff format \
+            src/post_training_rsi/recovery_activation \
+            tests/test_recovery_activation.py \
+            tests/test_recovery_activation_cli.py \
+            tests/test_recovery_activation_manifest.py \
+            scripts/reconcile_recovery_activation.py \
+            scripts/sync_recovery_activation_index.py
+          python -m compileall -q src tests scripts
+          ruff check src tests scripts
+          mypy src
+
+      - name: Focused recovery activation matrix
+        run: |
+          python -m pytest -q \
+            tests/test_recovery_activation.py \
+            tests/test_recovery_activation_cli.py \
+            tests/test_recovery_activation_manifest.py \
+            tests/test_documentation_contract.py
+
+      - name: Full repository gate
+        run: |
+          python -m pytest -q \
+            --cov=post_training_rsi \
+            --cov-report=term-missing \
+            --cov-fail-under=75
+
+      - name: Verify package command surface
+        run: |
+          python - <<'PY'
+          import argparse
+
+          from post_training_rsi.recovery_activation.__main__ import _parser
+
+          parser = _parser()
+          subparsers = [
+              action
+              for action in parser._actions
+              if isinstance(action, argparse._SubParsersAction)
+          ]
+          if len(subparsers) != 1:
+              raise SystemExit("recovery CLI subparser contract is ambiguous")
+          commands = set(subparsers[0].choices)
+          expected = {"build", "verify", "preflight"}
+          if commands != expected:
+              raise SystemExit(
+                  f"recovery CLI commands mismatch: expected={sorted(expected)}, "
+                  f"actual={sorted(commands)}"
+              )
+          PY
+
+      - name: Publish validation evidence
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import subprocess
+          from pathlib import Path
+
+          validated_input_head = subprocess.check_output(
+              ["git", "rev-parse", "HEAD"], text=True
+          ).strip()
+          identity = {
+              "schema_version": "post-training-rsi.validation/v1",
+              "component": "recovery-activation-plan",
+              "branch": "feat/recovery-activation-plan",
+              "validated_input_head": validated_input_head,
+              "python": "3.11",
+              "gates": {
+                  "compileall": "PASS",
+                  "ruff": "PASS",
+                  "mypy": "PASS",
+                  "focused_activation_matrix": "PASS",
+                  "documentation_contract": "PASS",
+                  "full_pytest_coverage_floor": "PASS",
+                  "package_command_surface": "PASS"
+              },
+              "commands": ["build", "verify", "preflight"],
+              "terminal_status": "READY_FOR_HUMAN_EXECUTION",
+              "executed": False,
+              "non_claims": [
+                  "no live pointer mutation",
+                  "no automatic recovery",
+                  "no authenticated reviewer identity",
+                  "no remote backup, encryption, or retention policy",
+                  "no production readiness"
+              ]
+          }
+          canonical = json.dumps(
+              identity,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          )
+          value = dict(identity)
+          value["evidence_sha256"] = hashlib.sha256(
+              canonical.encode("utf-8")
+          ).hexdigest()
+          Path("docs/validation/recovery-activation-plan-latest.json").write_text(
+              json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          lines = [
+              "# Recovery activation plan validation",
+              "",
+              "- Branch: `feat/recovery-activation-plan`",
+              f"- Validated input head: `{validated_input_head}`",
+              "- Python: `3.11`",
+              f"- Evidence SHA-256: `{value['evidence_sha256']}`",
+              "- Terminal status: `READY_FOR_HUMAN_EXECUTION`",
+              "- Executed: `false`",
+              "",
+              "## Passed gates",
+              "",
+              "```text",
+              "compileall",
+              "Ruff",
+              "mypy",
+              "focused activation matrix",
+              "documentation contract",
+              "full pytest coverage floor",
+              "package command surface: build / verify / preflight only",
+              "```",
+              "",
+              "## Non-claims",
+              "",
+              "No live pointer mutation, automatic recovery, authenticated reviewer identity, remote backup/encryption/retention policy, or production readiness was verified.",
+              ""
+          ]
+          Path("docs/validation/recovery-activation-plan-latest.md").write_text(
+              "\n".join(lines),
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Remove temporary mutation workflows
+        run: |
+          rm -f \
+            .github/workflows/finalize-recovery-activation-plan.yml \
+            .github/workflows/sync-recovery-activation-index.yml \
+            .github/workflows/reconcile-recovery-activation.yml
+
+      - name: Commit reconciled PR-14 slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "ed3c"
+          git config user.email "mcnum01@gmail.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Recovery activation branch is already reconciled."
+            exit 0
+          fi
+          git commit -m "feat(recovery): reconcile activation plan and preflight proof"
+          git push origin HEAD:feat/recovery-activation-plan
