@@ -3,7 +3,7 @@
   "repository": "ed3c/post-training-rsi-pipeline",
   "branch": "feat/coevolution-convergence",
   "runtime_status": {
-    "supported_local_commands": ["demo", "rsi", "verify", "audit", "approvals", "review", "coevolve", "coevolve-status", "coevolve-audit"],
+    "supported_local_commands": ["demo", "rsi", "verify", "audit", "approvals", "review", "coevolve", "coevolve-status", "coevolve-audit", "provider-preflight"],
     "deterministic_reference_only": true,
     "production_ready": false,
     "git_town_configured": false

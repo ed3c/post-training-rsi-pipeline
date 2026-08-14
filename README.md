@@ -33,6 +33,7 @@ PR #7 now composes the State-domain contracts, RSI decision policy, transactiona
 | Historical Peak | Supported | Promotion requires strict score improvement and a committed promotion Decision |
 | Model/Harness Co-Evolution | Supported deterministic reference | `coevolve` composes frozen-model Harness search, observable Trace harvesting, model inner-loop evaluation, durable resume, pointer history, and rollback/stop guards |
 | Co-Evolution `coevolve-status` / `coevolve-audit` | Supported read-only | Links Run pointer, latest transaction, and latest Snapshot; audits the durable evidence graph and writes one report without repairing anything |
+| Provider `provider-preflight` | Supported read-only | Fail-closed admission checks before any data leaves the process: adapter classification, credential *names*, Teacher URL policy, command resolution, budgets, approvals, benchmarks, and a destination-authorization receipt bound to the exact config hash and origin |
 | Real cloud/GPU execution | Not verified | No claim of real Teacher API, TRL/DeepSpeed job, live serving, or production benchmark run |
 | Git Town stack | Not configured | Ordinary GitHub parent/child and sibling PRs only; Git Town remains fail closed |
 

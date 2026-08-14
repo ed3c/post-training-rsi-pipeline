@@ -25,6 +25,11 @@ from .orchestration import (
     build_converged_rsi_controller,
     build_reference_coevolution_controller,
 )
+from .preflight import (
+    PreflightTarget,
+    ProviderPreflight,
+    load_authorization_file,
+)
 from .verification.pipeline import VerificationPipeline
 
 
@@ -92,6 +97,36 @@ def _parser() -> argparse.ArgumentParser:
         help="promote any warning to a failing overall result",
     )
     _add_identity_arguments(coevolve_audit)
+
+    preflight = subparsers.add_parser(
+        "provider-preflight",
+        help="read-only fail-closed admission checks before any provider is contacted",
+        description=(
+            "Validate the Teacher, training, serving, and evaluation "
+            "configuration before any data leaves the process or any paid "
+            "resource starts. This command performs no network call, no "
+            "subprocess, no GPU call, and no endpoint mutation; it may write "
+            "only <workspace>/reports/provider-preflight.json. With --strict, "
+            "any warning becomes a failing result."
+        ),
+    )
+    preflight.add_argument(
+        "--target",
+        required=True,
+        choices=[item.value for item in PreflightTarget],
+        help="which admission profile to apply",
+    )
+    preflight.add_argument(
+        "--authorization-file",
+        type=Path,
+        default=None,
+        help="destination authorization receipt admitting external transmission",
+    )
+    preflight.add_argument(
+        "--strict",
+        action="store_true",
+        help="promote any warning to a failing overall result",
+    )
 
     verify = subparsers.add_parser(
         "verify",
@@ -185,6 +220,15 @@ def main(argv: list[str] | None = None) -> int:
         _print_json(report.to_dict())
         return report.exit_code
 
+    if args.command == "provider-preflight":
+        return _provider_preflight(
+            config=config,
+            workspace=workspace,
+            target=args.target,
+            authorization_file=args.authorization_file,
+            strict=args.strict,
+        )
+
     if args.command == "verify":
         _print_json(
             _verify_dataset(
@@ -263,6 +307,28 @@ def _coevolution_status(
         return 2
     _print_json(view.to_dict())
     return 0
+
+
+def _provider_preflight(
+    *,
+    config: PipelineConfig,
+    workspace: Path,
+    target: str,
+    authorization_file: Path | None,
+    strict: bool,
+) -> int:
+    authorization = (
+        load_authorization_file(authorization_file)
+        if authorization_file is not None
+        else None
+    )
+    report = ProviderPreflight(config, workspace=workspace).run(
+        target=target,
+        authorization=authorization,
+        strict=strict,
+    )
+    _print_json(report.to_dict())
+    return report.exit_code
 
 
 def _verify_dataset(
