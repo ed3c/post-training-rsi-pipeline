@@ -234,6 +234,9 @@ class ModelInnerPolicy:
         score_delta = observation.score - active_score
         regression = max(0.0, active_score - observation.score)
         metadata: dict[str, JSONValue] = {
+            # Preserve the exact trained Candidate identity so an
+            # immutable approval pause can reconstruct and resume it.
+            **dict(current.metadata),
             "candidate_checkpoint_id": observation.checkpoint_id,
             "parent_checkpoint_id": observation.parent_checkpoint_id,
             "benchmark_id": observation.benchmark_id,
