@@ -90,6 +90,11 @@ class TraceHarvester:
                 reasons.append("UNSUCCESSFUL_TRACE")
             if trace.score < self.config.min_score:
                 reasons.append("SCORE_BELOW_MINIMUM")
+            if not any(
+                step.event_type is TraceEventType.TASK_INPUT
+                for step in trace.steps
+            ):
+                reasons.append("MISSING_TASK_INPUT")
 
             if reasons:
                 rejected.append(
