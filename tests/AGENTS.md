@@ -5,13 +5,27 @@ This file narrows the root [`AGENTS.md`](../AGENTS.md) for deterministic test ev
 ## Test contract
 
 - Tests must run without network, API keys, GPUs, Docker daemons, or mutable cloud services.
-- Use deterministic fixtures for Teacher, trainer, evaluator, serving, approval, and clock/ID behavior.
-- Every state transition needs assertions for the state, reason, and emitted artifact/evidence.
+- Use deterministic fixtures for Teacher, trainer, evaluator, serving, approval, clock/ID behavior, and serialized control records.
+- Every state transition needs assertions for the state, event, reason, and emitted artifact/evidence.
 - Every promotion path needs a rejection or rollback counterpart.
 - Every external command adapter needs stale-result, malformed-result, mismatch, timeout, and non-zero-exit coverage as applicable.
 - Never mark a test `xfail` merely because a required transition is not implemented; leave the feature status as Planned/Partial instead.
 
-## Required matrices
+## Control-plane contract matrix
+
+For `post-training-rsi.control/v1`, cover:
+
+```text
+canonical round-trip | detached JSON metadata | exact schema/record type
+unknown/missing fields | unknown enum | invalid ID/hash/timestamp
+NaN/infinity/negative cost | duplicate/missing evidence
+terminal state without StopReason | non-terminal state with StopReason
+START with previous state | non-START without previous state
+```
+
+Contract tests prove serialization and invariants only. They must not imply that a state is reachable from the supported CLI. Adjacency tests belong to the controller PR that owns the transition.
+
+## Required runtime matrices
 
 For RSI policy, cover:
 

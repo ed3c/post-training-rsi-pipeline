@@ -49,10 +49,11 @@ Read these sources in order before editing:
 3. `docs/README.md` — documentation index and source-of-truth map.
 4. `docs/implementation-status.md` — exact implementation snapshot and known gaps.
 5. `docs/state-machine.md` — transition contracts and evidence emitted by each state.
-6. `docs/traceability-index.md` — requirement → code → test → evidence → planned PR mapping.
-7. `docs/stacked-pr-plan.md` — review/merge decomposition and Git Town admission status.
-8. The nearest path-scoped `AGENTS.md`, if one is added later.
-9. The issue/task packet and the current branch/PR graph.
+6. `docs/control-plane-contracts.md` — versioned state/event/decision/evidence schema.
+7. `docs/traceability-index.md` — requirement → code → test → evidence → planned PR mapping.
+8. `docs/stacked-pr-plan.md` — review/merge decomposition and Git Town admission status.
+9. The nearest path-scoped `AGENTS.md`, if one is added later.
+10. The issue/task packet and the current branch/PR graph.
 
 Do not infer completion from architecture diagrams. Executable code and tests outrank prose.
 
@@ -63,7 +64,7 @@ When sources disagree, use this order:
 1. checked-in executable code and deterministic tests;
 2. current branch configuration and CI workflow;
 3. `docs/implementation-status.md`;
-4. `docs/state-machine.md` and `docs/traceability-index.md`;
+4. `docs/state-machine.md`, `docs/control-plane-contracts.md`, and `docs/traceability-index.md`;
 5. target architecture in `docs/architecture.md`;
 6. the source PDF and external design notes.
 
@@ -73,10 +74,13 @@ The source PDF defines the intended architecture. It does not prove that a featu
 
 At the documentation baseline, `feat/pdf-architecture` is package version `0.2.0`. Its latest verified CI run is green, but the runnable CLI exposes only `demo`, and `RSIEngine.run()` executes one deterministic iteration. Peak comparison, multi-iteration plateau handling, full lineage persistence, `audit`, `coevolve`, Harness mutation, trajectory harvesting, HITL approval, and production adapter selection are not yet wired end to end.
 
+`feat/state-domain-contracts` adds the versioned `post-training-rsi.control/v1` control-plane schema. The schema and its tests are **Contract only** until a supported controller emits and persists these records.
+
 Any change that alters this statement must update all of:
 
 - `README.md` current-state table;
 - `docs/implementation-status.md`;
+- `docs/control-plane-contracts.md` when the schema changes;
 - `docs/traceability-index.md`;
 - the relevant transition tests.
 
@@ -92,13 +96,16 @@ Any change that alters this statement must update all of:
 8. Never expose credentials, private benchmark content, model weights, or provider tokens.
 9. Never mutate production endpoints, Git history, or cloud infrastructure implicitly.
 10. Human approval gates must fail closed: missing, malformed, mismatched, pending, or denied decisions are not approvals.
+11. Never redefine shared state, event, stop-reason, decision, or evidence semantics outside `control_plane/`.
+12. Never accept unknown fields or silently reinterpret an incompatible control schema version.
 
 ## 5. Directory ownership and state-machine boundaries
 
 | Path | Owns | Must not own |
 |---|---|---|
 | `src/post_training_rsi/config.py` | validated configuration and thresholds | runtime transition policy |
-| `src/post_training_rsi/models.py` | portable records and result types | provider SDK calls |
+| `src/post_training_rsi/control_plane/` | versioned provider-neutral state/event/stop/decision/evidence records | adjacency, score thresholds, provider SDK calls, persistence side effects |
+| `src/post_training_rsi/models.py` | current portable data/result payloads | provider SDK calls or duplicate control taxonomies |
 | `src/post_training_rsi/engine.py` | current orchestration entry point | hidden provider-specific behavior |
 | `src/post_training_rsi/generation.py` | deterministic synthesis fixture | production Teacher transport |
 | `src/post_training_rsi/synthesis/` | Teacher protocols, prompts, provider-facing synthesis | promotion decisions |
@@ -111,7 +118,7 @@ Any change that alters this statement must update all of:
 | `tests/` | deterministic state/contract evidence | network-, API-key-, or GPU-dependent tests |
 | `docs/` | current status, architecture, operations, traceability | claims unsupported by code/tests |
 
-Provider adapters must implement stable protocols. Controllers depend on protocols, not provider SDKs.
+Provider adapters must implement stable protocols. Controllers depend on protocols and `control_plane/` records, not provider SDKs.
 
 ## 6. Required task packet
 
@@ -135,6 +142,7 @@ Path-disjoint work should be sibling PRs. Serial parent/child branches are only 
 Run the smallest relevant checks first, then the full local gate:
 
 ```bash
+python -m pytest tests/test_control_plane.py
 make install
 make lint
 make typecheck
@@ -144,11 +152,13 @@ make demo
 
 `make coevolve` is currently a **known red target** because the checked-in CLI does not expose `coevolve`. Do not claim it passes until the command and deterministic E2E test exist.
 
-For every changed transition:
+For every changed transition or control record:
 
+- use the shared `control_plane/` enums and record types;
 - add a deterministic regression test;
 - assert the transition reason and emitted evidence;
-- update `docs/state-machine.md` and `docs/traceability-index.md`;
+- preserve canonical serialization and strict schema rejection;
+- update `docs/state-machine.md`, `docs/control-plane-contracts.md`, and `docs/traceability-index.md`;
 - keep tests runnable without network, API keys, GPUs, or mutable external services.
 
 ## 8. Git and PR protocol
@@ -169,7 +179,7 @@ Git Town is **not configured** at this baseline. Do not run `git town` commands 
 Use these labels consistently:
 
 - **Implemented** — reachable from a supported CLI/runtime path and covered by deterministic tests.
-- **Contract only** — protocol or adapter exists but is not selected by the supported runtime.
+- **Contract only** — protocol, record schema, or adapter exists but is not selected/emitted by the supported runtime.
 - **Partial** — some states exist but required transitions/evidence are missing.
 - **Planned** — documented target with no reachable implementation.
 - **Verified** — CI or local command evidence is recorded for the exact commit.
