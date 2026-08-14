@@ -1,0 +1,65 @@
+name: Forensic Recovery Documentation Sync
+
+on:
+  push:
+    branches:
+      - feat/forensic-recovery-bundle
+    paths:
+      - "scripts/sync_forensic_recovery_index.py"
+      - ".github/workflows/forensic-recovery-doc-sync.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  synchronize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/forensic-recovery-bundle
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Synchronize indexes
+        run: |
+          python scripts/sync_forensic_recovery_index.py
+          python scripts/sync_forensic_recovery_index.py --check
+
+      - name: Validate documentation and manifest contracts
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+          ruff check scripts/sync_forensic_recovery_index.py tests/test_forensic_recovery_manifest.py
+          python -m pytest -q \
+            tests/test_forensic_recovery_manifest.py \
+            tests/test_documentation_contract.py
+
+      - name: Commit synchronized indexes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "All PR-13 index blocks are already synchronized."
+            exit 0
+          fi
+          git config user.name "ed3c"
+          git config user.email "mcnum01@gmail.com"
+          git add \
+            README.md \
+            AGENTS.md \
+            docs/README.md \
+            docs/implementation-status.md \
+            docs/stacked-pr-plan.md \
+            docs/traceability-index.md \
+            docs/coevolution-audit-recovery.md \
+            src/post_training_rsi/AGENTS.md \
+            tests/AGENTS.md
+          git commit -m "docs(recovery): synchronize PR-13 traceability indexes"
+          git push origin HEAD:feat/forensic-recovery-bundle
