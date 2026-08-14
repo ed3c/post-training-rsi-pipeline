@@ -1,0 +1,51 @@
+name: PR10 Review Resume Metadata Repair
+
+on:
+  push:
+    branches:
+      - feat/model-inner-loop
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/model-inner-loop
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Preserve trained Candidate metadata across evaluation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/post_training_rsi/harness/model_inner_loop/policy.py")
+          text = path.read_text(encoding="utf-8")
+          old = (
+              "        metadata: dict[str, JSONValue] = {\n"
+              "            \"candidate_checkpoint_id\": observation.checkpoint_id,\n"
+          )
+          new = (
+              "        metadata: dict[str, JSONValue] = {\n"
+              "            # Preserve the exact trained Candidate identity so an\n"
+              "            # immutable approval pause can reconstruct and resume it.\n"
+              "            **dict(current.metadata),\n"
+              "            \"candidate_checkpoint_id\": observation.checkpoint_id,\n"
+          )
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f"expected one replacement, found {count}")
+          path.write_text(text.replace(old, new), encoding="utf-8")
+          PY
+
+      - name: Commit repair
+        run: |
+          git config user.name 'ed3c'
+          git config user.email 'mcnum01@gmail.com'
+          git add src/post_training_rsi/harness/model_inner_loop/policy.py
+          git commit -m 'fix(model): preserve Candidate metadata across review pause'
+          git push origin HEAD:feat/model-inner-loop
