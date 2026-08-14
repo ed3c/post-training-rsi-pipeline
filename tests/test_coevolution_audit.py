@@ -2,13 +2,20 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from post_training_rsi.approval import ApprovalStore
 from post_training_rsi.audit import AuditStatus, CoEvolutionAuditor
+from post_training_rsi.audit.coevolution import (
+    CoEvolutionAuditError,
+    _verify_run_snapshot,
+)
 from post_training_rsi.config import PipelineConfig
+from post_training_rsi.harness.coevolution_store import CoEvolutionRunStore
+from post_training_rsi.lineage import ControlRecordStore
 from post_training_rsi.orchestration.coevolution import (
     build_reference_coevolution_controller,
 )
@@ -248,6 +255,59 @@ def test_approval_request_tamper_fails(tmp_path: Path) -> None:
         and item.status is AuditStatus.FAIL
         for item in report.checks
     )
+
+
+def test_intact_pending_approval_passes_and_reports_its_subject(tmp_path: Path) -> None:
+    workspace = tmp_path / "pending-workspace"
+    result = build_reference_coevolution_controller(
+        _config(harness_review_required=True),
+        workspace=workspace,
+        run_id="audit-pending",
+    ).run()
+    assert result.pending_approval_request_id is not None
+
+    report = _auditor(workspace).audit(write_report=False)
+
+    check = _check(report, "audit-pending-approval")
+    assert check.status is AuditStatus.PASS
+    assert check.subject == result.pending_approval_request_id
+    assert check.details["approval_subject"] == "harness"
+    assert check.details["decision_available"] is False
+
+    # The pause commits an evidence-only approval transaction after the one that
+    # committed the latest Snapshot, so the Snapshot linkage must still verify.
+    assert _check(report, "audit-latest-snapshot").status is AuditStatus.PASS
+    status = _auditor(workspace).status()
+    assert status.state == "HARNESS_REVIEW_PENDING"
+    assert status.pending_approval_request_id == result.pending_approval_request_id
+    assert status.pending_approval_subject == "harness"
+
+
+def test_snapshot_score_disagreement_is_still_rejected(tmp_path: Path) -> None:
+    """A Snapshot may omit a score, but it may never contradict the Run pointer."""
+    workspace = _completed_workspace(tmp_path)
+    metadata = CoEvolutionRunStore(workspace).load()
+    snapshot = ControlRecordStore(workspace).load_snapshot(
+        metadata.latest_snapshot_id
+    )
+    _verify_run_snapshot(metadata, snapshot)
+
+    for broken in (
+        replace(
+            snapshot,
+            metadata={
+                **snapshot.metadata,
+                "active_model_score": metadata.active_model_score + 0.25,
+            },
+        ),
+        replace(
+            snapshot,
+            metadata={**snapshot.metadata, "active_model_score": "0.9"},
+        ),
+        replace(snapshot, peak_score=metadata.active_harness_score + 0.25),
+    ):
+        with pytest.raises(CoEvolutionAuditError):
+            _verify_run_snapshot(metadata, broken)
 
 
 def test_orphan_record_and_retained_lock_warn_and_strict_fails(tmp_path: Path) -> None:

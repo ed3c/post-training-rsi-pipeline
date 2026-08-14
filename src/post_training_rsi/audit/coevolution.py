@@ -10,7 +10,7 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 from ..approval import ApprovalStore, record_sha256
-from ..control_plane import DecisionSubject, StateSnapshot
+from ..control_plane import StateSnapshot
 from ..harness.coevolution_store import CoEvolutionRunMetadata, CoEvolutionRunStore
 from ..harness.persistence import HarnessPointerStore, HarnessSnapshotStore
 from ..lineage import (
@@ -62,13 +62,13 @@ class CoEvolutionAuditor:
                 metadata.latest_transaction_id
             )
             snapshot = control_store.load_snapshot(metadata.latest_snapshot_id)
-            if not any(
-                ref.record_type == StateSnapshot.RECORD_TYPE
-                and ref.record_id == snapshot.snapshot_id
-                for ref in transaction.records
+            if not self._snapshot_is_committed(
+                control_store,
+                snapshot.snapshot_id,
+                latest=transaction,
             ):
                 raise CoEvolutionAuditError(
-                    "latest StateSnapshot is not committed by latest transaction"
+                    "latest StateSnapshot is not committed by any transaction"
                 )
             _verify_run_snapshot(metadata, snapshot)
             return CoEvolutionStatusView(
@@ -136,13 +136,15 @@ class CoEvolutionAuditor:
                     ),
                 )
             )
+            # Writing the report here would create the very workspace the audit
+            # just reported as absent, so the report is suppressed instead.
             return self._finalize(
                 checks,
                 counts,
                 active,
                 strict=strict,
                 run_id=None,
-                write_report=write_report,
+                write_report=False,
             )
 
         checks.append(
@@ -209,13 +211,13 @@ class CoEvolutionAuditor:
                 metadata.latest_transaction_id
             )
             snapshot = control_store.load_snapshot(metadata.latest_snapshot_id)
-            if not any(
-                ref.record_type == StateSnapshot.RECORD_TYPE
-                and ref.record_id == snapshot.snapshot_id
-                for ref in transaction.records
+            if not self._snapshot_is_committed(
+                control_store,
+                snapshot.snapshot_id,
+                latest=transaction,
             ):
                 raise CoEvolutionAuditError(
-                    "latest Snapshot is absent from latest transaction manifest"
+                    "latest Snapshot is absent from every transaction manifest"
                 )
             _verify_run_snapshot(metadata, snapshot)
             active["total_cost_usd"] = snapshot.total_cost_usd
@@ -721,7 +723,7 @@ class CoEvolutionAuditor:
                         AuditStatus.PASS,
                         request_id,
                         "Run pointer is bound to the exact immutable approval Request.",
-                        subject=metadata.pending_approval_subject,
+                        approval_subject=metadata.pending_approval_subject,
                         decision_available=store.has_decision(request_id),
                     )
                 )
@@ -843,6 +845,41 @@ class CoEvolutionAuditor:
             )
         )
 
+    def _snapshot_is_committed(
+        self,
+        store: ControlRecordStore,
+        snapshot_id: str,
+        *,
+        latest: Any,
+    ) -> bool:
+        """Whether ``snapshot_id`` is committed by any verified transaction.
+
+        The Run pointer advances ``latest_transaction_id`` past the transaction
+        that committed ``latest_snapshot_id`` whenever the last durable write is
+        evidence-only — an approval Request pause is the reachable case. The
+        integrity property is that the Snapshot is committed at all, so the
+        latest transaction is only the fast path, not the requirement.
+        """
+        if any(
+            ref.record_type == StateSnapshot.RECORD_TYPE
+            and ref.record_id == snapshot_id
+            for ref in latest.records
+        ):
+            return True
+        transactions_root = self.workspace / "control" / "transactions"
+        for path in sorted(transactions_root.glob("*.json")):
+            try:
+                manifest = store.load_transaction(path.stem)
+            except Exception:
+                continue
+            if any(
+                ref.record_type == StateSnapshot.RECORD_TYPE
+                and ref.record_id == snapshot_id
+                for ref in manifest.records
+            ):
+                return True
+        return False
+
     def _finalize(
         self,
         checks: list[AuditCheck],
@@ -897,21 +934,25 @@ def _verify_run_snapshot(
         raise CoEvolutionAuditError(
             "Run pointer and Snapshot active Harness IDs differ"
         )
+    # Only some transitions carry a score on the Snapshot: a review-pending
+    # Snapshot records the Harness score without a model score. Absence is the
+    # emitting State's shape, not corruption; disagreement is corruption.
     model_score = snapshot.metadata.get("active_model_score")
-    if isinstance(model_score, bool) or not isinstance(model_score, (int, float)):
-        raise CoEvolutionAuditError(
-            "Snapshot metadata.active_model_score is missing or invalid"
-        )
-    if not math.isclose(
-        float(model_score),
-        metadata.active_model_score,
-        rel_tol=0.0,
-        abs_tol=1e-12,
-    ):
-        raise CoEvolutionAuditError(
-            "Run pointer and Snapshot active model scores differ"
-        )
-    if snapshot.peak_score is None or not math.isclose(
+    if model_score is not None:
+        if isinstance(model_score, bool) or not isinstance(model_score, (int, float)):
+            raise CoEvolutionAuditError(
+                "Snapshot metadata.active_model_score is invalid"
+            )
+        if not math.isclose(
+            float(model_score),
+            metadata.active_model_score,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        ):
+            raise CoEvolutionAuditError(
+                "Run pointer and Snapshot active model scores differ"
+            )
+    if snapshot.peak_score is not None and not math.isclose(
         snapshot.peak_score,
         metadata.active_harness_score,
         rel_tol=0.0,

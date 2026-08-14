@@ -18,8 +18,10 @@ This file is the current integration truth. Component documents describe exact b
 | `approvals` | Supported | immutable approval request listing and status derivation |
 | `review` | Supported | immutable approve/deny Decision bound to exact Request SHA-256 |
 | `coevolve` | Supported deterministic reference | durable local outer/middle/inner composition with resume, evidence, pointer history, rollback, and terminal guards; no real GPU/cloud claim |
+| `coevolve-status` | Supported read-only | Run pointer → latest transaction → latest StateSnapshot linkage; writes nothing |
+| `coevolve-audit` | Supported read-only | full durable evidence-graph verification; writes only `<workspace>/reports/coevolution-audit.json` and never repairs |
 
-Support here means reachable on `feat/coevolution-convergence`, not on `main`.
+Support here means reachable on `main` after the stacked PR #1–#12 merge.
 
 ## 2. Capability matrix
 

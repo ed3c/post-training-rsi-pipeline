@@ -8,7 +8,7 @@ This repository turns the source architecture into executable components, typed 
 - **implemented component** — coded and tested, but not reachable from the supported composition root;
 - **target architecture** — planned behavior that still requires an implementation PR and evidence.
 
-Read [`AGENTS.md`](AGENTS.md) before changing code. The document index is in [`docs/README.md`](docs/README.md).
+Read [`AGENTS.md`](AGENTS.md) before changing code. The document index is in [`docs/README.md`](docs/README.md), and the machine-readable directory → State Machine → evidence → PR index is [`docs/architecture-manifest.json`](docs/architecture-manifest.json).
 
 ## Current integration truth
 
@@ -32,6 +32,7 @@ PR #7 now composes the State-domain contracts, RSI decision policy, transactiona
 | HITL Dataset/Checkpoint review | Supported when configured | Missing, pending, denied, expired, unauthorized, or mismatched review fails closed |
 | Historical Peak | Supported | Promotion requires strict score improvement and a committed promotion Decision |
 | Model/Harness Co-Evolution | Supported deterministic reference | `coevolve` composes frozen-model Harness search, observable Trace harvesting, model inner-loop evaluation, durable resume, pointer history, and rollback/stop guards |
+| Co-Evolution `coevolve-status` / `coevolve-audit` | Supported read-only | Links Run pointer, latest transaction, and latest Snapshot; audits the durable evidence graph and writes one report without repairing anything |
 | Real cloud/GPU execution | Not verified | No claim of real Teacher API, TRL/DeepSpeed job, live serving, or production benchmark run |
 | Git Town stack | Not configured | Ordinary GitHub parent/child and sibling PRs only; Git Town remains fail closed |
 

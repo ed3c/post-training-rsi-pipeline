@@ -7,6 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from .approval import ApprovalPolicy, ApprovalService, ApprovalStore, record_sha256
+from .audit import (
+    COEVOLUTION_STATUS_SCHEMA_VERSION,
+    CoEvolutionAuditError,
+    CoEvolutionAuditor,
+)
 from .config import PipelineConfig
 from .engine import build_default_engine
 from .lineage import (
@@ -59,6 +64,35 @@ def _parser() -> argparse.ArgumentParser:
     )
     coevolve.set_defaults(runtime_kind="deterministic-reference")
 
+    status = subparsers.add_parser(
+        "coevolve-status",
+        help="read-only lightweight Co-Evolution Run status view",
+        description=(
+            "Read-only status view linking the Co-Evolution Run pointer, its "
+            "latest control transaction, and its latest StateSnapshot. This "
+            "command never writes to the workspace. It is not a full integrity "
+            "audit; use coevolve-audit for that."
+        ),
+    )
+    _add_identity_arguments(status)
+
+    coevolve_audit = subparsers.add_parser(
+        "coevolve-audit",
+        help="read-only integrity audit of the durable Co-Evolution evidence graph",
+        description=(
+            "Read-only integrity audit of the durable local Model/Harness "
+            "Co-Evolution evidence graph. It may write one report to "
+            "<workspace>/reports/coevolution-audit.json and changes nothing "
+            "else. With --strict, any warning becomes a failing result."
+        ),
+    )
+    coevolve_audit.add_argument(
+        "--strict",
+        action="store_true",
+        help="promote any warning to a failing overall result",
+    )
+    _add_identity_arguments(coevolve_audit)
+
     verify = subparsers.add_parser(
         "verify",
         help="verify a JSONL Dataset with the configured admission gates",
@@ -94,6 +128,19 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _add_identity_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--expect-run-id",
+        default=None,
+        help="fail when the workspace belongs to a different Run ID",
+    )
+    parser.add_argument(
+        "--expect-config-sha256",
+        default=None,
+        help="fail when the Run was created from a different configuration",
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     config = PipelineConfig.load(args.config)
@@ -121,6 +168,22 @@ def main(argv: list[str] | None = None) -> int:
         ).run()
         _print_json(coevolution_result.to_dict())
         return 0
+
+    if args.command == "coevolve-status":
+        return _coevolution_status(
+            workspace=workspace,
+            expected_run_id=args.expect_run_id,
+            expected_config_sha256=args.expect_config_sha256,
+        )
+
+    if args.command == "coevolve-audit":
+        report = CoEvolutionAuditor(workspace).audit(
+            strict=args.strict,
+            expected_run_id=args.expect_run_id,
+            expected_config_sha256=args.expect_config_sha256,
+        )
+        _print_json(report.to_dict())
+        return report.exit_code
 
     if args.command == "verify":
         _print_json(
@@ -176,6 +239,30 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     raise AssertionError(f"unsupported command: {args.command}")
+
+
+def _coevolution_status(
+    *,
+    workspace: Path,
+    expected_run_id: str | None,
+    expected_config_sha256: str | None,
+) -> int:
+    try:
+        view = CoEvolutionAuditor(workspace).status(
+            expected_run_id=expected_run_id,
+            expected_config_sha256=expected_config_sha256,
+        )
+    except CoEvolutionAuditError as exc:
+        _print_json(
+            {
+                "schema_version": COEVOLUTION_STATUS_SCHEMA_VERSION,
+                "runtime_status": "ERROR",
+                "error": str(exc),
+            }
+        )
+        return 2
+    _print_json(view.to_dict())
+    return 0
 
 
 def _verify_dataset(

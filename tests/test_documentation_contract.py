@@ -6,15 +6,19 @@ from pathlib import Path
 from post_training_rsi.__main__ import _parser
 
 ROOT = Path(__file__).resolve().parents[1]
+COEVOLUTION_COMMANDS = {
+    "coevolve",
+    "coevolve-status",
+    "coevolve-audit",
+}
 SUPPORTED_COMMANDS = {
     "demo",
     "rsi",
-    "coevolve",
     "verify",
     "audit",
     "approvals",
     "review",
-}
+} | COEVOLUTION_COMMANDS
 REQUIRED_DOCUMENTS = {
     "AGENTS.md",
     "README.md",
@@ -66,15 +70,18 @@ def test_supported_cli_and_readme_stay_synchronized() -> None:
 
     readme = _read("README.md")
     convergence = _read("docs/rsi-convergence.md")
-    coevolution = _read("docs/coevolution-convergence.md")
+    coevolution = _read("docs/coevolution-convergence.md") + _read(
+        "docs/coevolution-audit-recovery.md"
+    )
     status = _read("docs/implementation-status.md")
-    for command in SUPPORTED_COMMANDS - {"coevolve"}:
+    for command in SUPPORTED_COMMANDS - COEVOLUTION_COMMANDS:
         assert f"`{command}`" in readme
         assert command in convergence
         assert f"`{command}`" in status
-    assert "`coevolve`" in readme
-    assert "coevolve" in coevolution
-    assert "`coevolve`" in status
+    for command in COEVOLUTION_COMMANDS:
+        assert f"`{command}`" in readme
+        assert command in coevolution
+        assert f"`{command}`" in status
 
 
 def test_required_document_graph_exists() -> None:
