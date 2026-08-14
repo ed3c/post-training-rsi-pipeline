@@ -258,13 +258,15 @@ A rollback keeps the accepted model active and records the rejected Candidate th
 
 After a model promotion, the reference controller:
 
-1. removes accumulated prompt appendices while preserving the observable-evidence contract;
+1. preserves the system prompt whole, including every rule a mutation appendix added;
 2. creates a content-addressed child Harness;
-3. records its prompt-size reduction;
+3. records prompt size before and after, which are equal in the reference runtime;
 4. evaluates it under the promoted model;
 5. commits an ACCEPT Decision and immutable snapshot;
 6. performs active-Harness CAS;
 7. advances to `FREEZE_MODEL` for the next cycle.
+
+Only the retry budget narrows. The control-plane text contract rejects control characters, so a system prompt is always single-line and mutation appends with a space rather than a paragraph break; there is no appendix boundary the reference runtime can cut on without a rule-level Harness representation, which this slice does not introduce. Slimming is therefore ordering and provenance only — it is **not** a prompt-size reduction.
 
 The reference score must strictly improve, so equal-score pointer replacement remains disallowed. Production convergence may later use a formally versioned multi-objective policy, but it must not weaken the current pointer silently.
 
@@ -404,6 +406,17 @@ post-training-rsi --workspace <path> --run-id <id> coevolve
 ```
 
 The command runs or resumes the deterministic reference controller. Existing `approvals` and `review` commands operate on the same workspace for a paused HITL run.
+
+The run result and its report carry `stop_reason`, because a completed run and a run a reviewer denied both report `STOPPED`:
+
+```text
+CYCLE_LIMIT                    all configured cycles completed
+APPROVAL_NOT_GRANTED           a reviewer denied a required gate
+PER_ITERATION_BUDGET_EXCEEDED  status ABORTED
+TOTAL_BUDGET_EXCEEDED          status ABORTED
+```
+
+Treating a denial as a completed run would defeat the fail-closed approval contract, so callers must branch on `stop_reason`, not on `status` alone.
 
 The CLI must label this path as a deterministic reference runtime and must not imply real provider, GPU, or production benchmark execution.
 
