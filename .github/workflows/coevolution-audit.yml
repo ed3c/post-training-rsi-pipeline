@@ -13,6 +13,7 @@ on:
       - "README.md"
       - "AGENTS.md"
       - ".github/workflows/coevolution-audit.yml"
+      - "scripts/check_mypy_delta.py"
   workflow_dispatch:
 
 permissions:
@@ -29,6 +30,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -42,10 +45,19 @@ jobs:
           python -m pip install -e '.[dev]'
 
       - name: Static validation
+        shell: bash
         run: |
-          python -m compileall -q src tests
-          ruff check src tests
-          mypy src
+          set -euo pipefail
+          python -m compileall -q src tests scripts
+          ruff check src tests scripts
+          base_ref="${GITHUB_BASE_REF:-}"
+          if [ -n "$base_ref" ]; then
+            git fetch --no-tags origin "$base_ref"
+            base_ref="origin/$base_ref"
+          else
+            base_ref="$(git rev-parse HEAD^)"
+          fi
+          python scripts/check_mypy_delta.py --base-ref "$base_ref"
 
       - name: Focused audit and documentation matrix
         run: |
