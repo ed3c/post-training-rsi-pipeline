@@ -2355,10 +2355,16 @@ class CoEvolutionController:
         snapshot_transactions: dict[str, str] = {}
         decision_transactions: dict[str, str] = {}
         final_transaction_id = ""
-        for index, iteration in enumerate(sorted(grouped)):
+        # Preserve producer-before-dependent insertion order across
+        # iteration groups. A next-cycle Snapshot may reset iteration
+        # to zero while depending on Evidence/Decision records from
+        # the just-completed iteration, so numeric sorting is unsafe.
+        for index, (iteration, iteration_records) in enumerate(
+            grouped.items()
+        ):
             items = tuple(
                 sorted(
-                    grouped[iteration],
+                    iteration_records,
                     key=lambda item: (
                         item.RECORD_TYPE,
                         _control_record_id(item),
