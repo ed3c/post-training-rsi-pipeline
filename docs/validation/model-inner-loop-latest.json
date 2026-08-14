@@ -1,0 +1,21 @@
+{
+  "schema_version": "post-training-rsi.validation/v1",
+  "repository": "ed3c/post-training-rsi-pipeline",
+  "branch": "feat/model-inner-loop",
+  "tested_commit": "3c611373a8097aec878e5529f197804585e7cb84",
+  "tested_tree": "65ab9516ea2d3c4999dcc0fd539573fb139bad61",
+  "run_id": "31797114106",
+  "run_attempt": 1,
+  "run_event": "pull_request",
+  "matrix": ["Python 3.11", "Python 3.12"],
+  "checks": [
+    {"name": "install", "status": "PASS"},
+    {"name": "compile and Ruff", "status": "PASS"},
+    {"name": "Dataset, artifact, endpoint, teardown, evidence, and model-policy matrix", "status": "PASS"},
+    {"name": "full pytest and coverage floor", "status": "PASS"},
+    {"name": "compatibility CLI smoke", "status": "PASS"}
+  ],
+  "overall_status": "PASS",
+  "validated_at": "2026-08-14T11:40:00Z",
+  "non_claims": ["real gradient training", "live production serving", "Peak mutation by the component", "Git Town stack"]
+}
