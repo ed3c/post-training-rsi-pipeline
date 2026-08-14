@@ -10,6 +10,7 @@ from ..control_plane import (
     DecisionAction,
     DecisionRecord,
     DecisionSubject,
+    JSONValue,
     StateSnapshot,
     StopReason,
     TransitionRecord,
@@ -42,6 +43,8 @@ class RSIPolicyLimits:
     total_budget_usd: float
 
     def __post_init__(self) -> None:
+        validate_nonnegative_int(self.max_iterations, "max_iterations")
+        validate_nonnegative_int(self.plateau_patience, "plateau_patience")
         if self.max_iterations < 1:
             raise ValueError("max_iterations must be positive")
         if self.plateau_patience < 1:
@@ -132,6 +135,18 @@ class RSIPolicyStep:
             len(self.decisions) == len(self.transitions) == len(self.snapshots)
         ):
             raise ValueError("each policy decision requires one transition and one snapshot")
+        for decision, transition, snapshot in zip(
+            self.decisions,
+            self.transitions,
+            self.snapshots,
+            strict=True,
+        ):
+            if transition.decision_id != decision.decision_id:
+                raise ValueError("transition must reference its paired decision")
+            if snapshot.metadata.get("decision_id") != decision.decision_id:
+                raise ValueError("snapshot must reference its paired decision")
+            if not (decision.run_id == transition.run_id == snapshot.run_id):
+                raise ValueError("paired policy records must share one run_id")
 
     @property
     def final_snapshot(self) -> StateSnapshot:
@@ -265,8 +280,7 @@ class RSIDecisionPolicy:
     ) -> None:
         if current.state is not ControlState.EVALUATE:
             raise PolicyInvariantError("candidate policy requires an EVALUATE snapshot")
-        if current.run_id != self._run_id_from_snapshot(current):
-            raise PolicyInvariantError("snapshot run_id is invalid")
+        validate_id(current.run_id, "run_id")
         if current.iteration != candidate.iteration:
             raise PolicyInvariantError("candidate iteration does not match state iteration")
         if current.active_checkpoint_id != current.peak_checkpoint_id:
@@ -284,15 +298,12 @@ class RSIDecisionPolicy:
             )
 
     @staticmethod
-    def _run_id_from_snapshot(current: StateSnapshot) -> str:
-        return validate_id(current.run_id, "run_id")
-
-    @staticmethod
     def _required_peak_score(current: StateSnapshot) -> float:
-        if current.peak_score is None:
+        peak_score = current.peak_score
+        if peak_score is None:
             raise PolicyInvariantError("candidate policy requires an existing Peak score")
-        validate_finite_number(current.peak_score, "peak_score")
-        return current.peak_score
+        validate_finite_number(peak_score, "peak_score")
+        return peak_score
 
     def _abort_for_budget(
         self,
@@ -342,17 +353,30 @@ class RSIDecisionPolicy:
         next_peak_score: float,
         next_plateau_count: int,
         stop_reason: StopReason | None,
-        metadata: dict[str, float],
+        metadata: dict[str, JSONValue],
     ) -> RSIPolicyStep:
         phase = target_state.value.lower()
-        decision_id = _record_id("decision", current.run_id, current.iteration, phase)
+        decision_id = _record_id(
+            "decision",
+            current.run_id,
+            current.iteration,
+            phase,
+            candidate.checkpoint_id,
+        )
         transition_id = _record_id(
             "transition",
             current.run_id,
             current.iteration,
             phase,
+            candidate.checkpoint_id,
         )
-        snapshot_id = _record_id("snapshot", current.run_id, current.iteration, phase)
+        snapshot_id = _record_id(
+            "snapshot",
+            current.run_id,
+            current.iteration,
+            phase,
+            candidate.checkpoint_id,
+        )
         decision = DecisionRecord(
             decision_id=decision_id,
             run_id=current.run_id,
@@ -380,6 +404,7 @@ class RSIDecisionPolicy:
                 current.run_id,
                 current.iteration,
                 phase,
+                candidate.checkpoint_id,
             ),
             decision_id=decision_id,
             evidence_ids=candidate.evidence_ids,
@@ -471,7 +496,13 @@ def _append_run_decision(
 ) -> RSIPolicyStep:
     current = step.final_snapshot
     phase = target_state.value.lower()
-    decision_id = _record_id("decision", current.run_id, current.iteration, phase)
+    decision_id = _record_id(
+        "decision",
+        current.run_id,
+        current.iteration,
+        phase,
+        candidate.checkpoint_id,
+    )
     decision = DecisionRecord(
         decision_id=decision_id,
         run_id=current.run_id,
@@ -496,6 +527,7 @@ def _append_run_decision(
             current.run_id,
             current.iteration,
             phase,
+            candidate.checkpoint_id,
         ),
         run_id=current.run_id,
         iteration=current.iteration,
@@ -508,6 +540,7 @@ def _append_run_decision(
             current.run_id,
             current.iteration,
             phase,
+            candidate.checkpoint_id,
         ),
         decision_id=decision_id,
         evidence_ids=candidate.evidence_ids,
@@ -520,6 +553,7 @@ def _append_run_decision(
             current.run_id,
             current.iteration,
             phase,
+            candidate.checkpoint_id,
         ),
         run_id=current.run_id,
         iteration=next_iteration,
@@ -548,7 +582,13 @@ def _append_run_decision(
     )
 
 
-def _record_id(prefix: str, run_id: str, iteration: int, phase: str) -> str:
-    material = f"{run_id}:{iteration}:{phase}:{prefix}".encode("utf-8")
+def _record_id(
+    prefix: str,
+    run_id: str,
+    iteration: int,
+    phase: str,
+    identity: str,
+) -> str:
+    material = f"{run_id}:{iteration}:{phase}:{prefix}:{identity}".encode("utf-8")
     digest = hashlib.sha256(material).hexdigest()[:16]
     return f"{prefix}-rsi-{iteration}-{phase}-{digest}"
