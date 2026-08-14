@@ -6,7 +6,6 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
-from pathlib import Path
 
 from ...control_plane import JSONValue
 from ...control_plane.validation import (
@@ -408,6 +407,8 @@ class HarvestedTraceBatch:
         validate_nonnegative_int(self.target_count, "target_count")
         if self.target_count < 1:
             raise TraceContractError("target_count must be positive")
+        if len(self.selected) > self.target_count:
+            raise TraceContractError("selected Trace count cannot exceed target_count")
         selected_ids = tuple(trace.trace_id for trace in self.selected)
         if len(selected_ids) != len(set(selected_ids)):
             raise TraceContractError("selected Trace IDs must be unique")
@@ -625,6 +626,18 @@ class TraceDatasetResult:
         validate_finite_number(self.acceptance_rate, "acceptance_rate")
         if not 0.0 <= self.acceptance_rate <= 1.0:
             raise TraceContractError("acceptance_rate must be in [0, 1]")
+        expected_acceptance_rate = (
+            self.accepted_count / self.raw_count if self.raw_count else 0.0
+        )
+        if not math.isclose(
+            self.acceptance_rate,
+            expected_acceptance_rate,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        ):
+            raise TraceContractError(
+                "acceptance_rate must equal accepted_count / raw_count"
+            )
         normalized_rejections: dict[str, int] = {}
         for reason, count in self.rejection_counts.items():
             reason_id = validate_id(reason, "rejection reason")
