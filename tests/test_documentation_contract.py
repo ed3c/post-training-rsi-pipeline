@@ -26,14 +26,22 @@ REQUIRED_DOCUMENTS = {
     "README.md",
     "docs/AGENTS.md",
     "docs/README.md",
+    "docs/architecture-manifest.json",
     "docs/implementation-status.md",
     "docs/state-machine.md",
     "docs/rsi-convergence.md",
+    "docs/coevolution-convergence.md",
+    "docs/coevolution-audit-recovery.md",
     "docs/control-plane-contracts.md",
     "docs/rsi-loop-policy.md",
     "docs/adapter-runtime.md",
+    "docs/integration-contracts.md",
     "docs/lineage-runtime.md",
     "docs/hitl-approval.md",
+    "docs/harness-outer-loop.md",
+    "docs/trace-harvesting.md",
+    "docs/model-inner-loop.md",
+    "docs/forensic-recovery-bundle.md",
     "docs/traceability-index.md",
     "docs/stacked-pr-plan.md",
     "docs/architecture.md",
@@ -121,6 +129,9 @@ def test_directory_state_ownership_is_indexed() -> None:
         "evaluation/",
         "lineage/",
         "harness/",
+        "audit/",
+        "preflight/",
+        "recovery_bundle/",
     ):
         assert path in readme
 
@@ -128,6 +139,7 @@ def test_directory_state_ownership_is_indexed() -> None:
         "orchestration/converged.py",
         "orchestration/rsi_policy.py",
         "orchestration/run_state.py",
+        "orchestration/coevolution.py",
     ):
         assert module in readme
 
@@ -170,8 +182,15 @@ def test_pr_graph_and_git_town_non_claim_are_explicit() -> None:
 
 
 def test_supported_state_machine_documents_failure_and_resume_edges() -> None:
-    state = _read("docs/state-machine.md")
-    convergence = _read("docs/rsi-convergence.md")
+    documents = [
+        _read(path)
+        for path in (
+            "docs/state-machine.md",
+            "docs/rsi-convergence.md",
+            "docs/coevolution-convergence.md",
+            "docs/coevolution-audit-recovery.md",
+        )
+    ]
 
     for token in (
         "DATA_REVIEW_PENDING",
@@ -180,8 +199,11 @@ def test_supported_state_machine_documents_failure_and_resume_edges() -> None:
         "ROLLED_BACK",
         "STOPPED",
         "ABORTED",
+        "HARVEST_TRACES",
+        "SLIM_HARNESS",
         "compare-and-swap",
         "teardown",
         "Resume",
+        "read-only",
     ):
-        assert token in state or token in convergence
+        assert any(token in document for document in documents), token

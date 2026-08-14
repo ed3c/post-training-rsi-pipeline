@@ -306,6 +306,50 @@ class ModelCandidateArtifact:
             metadata=safe_metadata,
         )
 
+    @classmethod
+    def from_dict(cls, value: Mapping[str, object]) -> ModelCandidateArtifact:
+        data = _exact_mapping(
+            value,
+            {
+                "checkpoint_id",
+                "request_id",
+                "run_id",
+                "cycle",
+                "model_id",
+                "parent_checkpoint_id",
+                "dataset_id",
+                "dataset_sha256",
+                "artifact_path",
+                "artifact_sha256",
+                "training_loss",
+                "training_cost_usd",
+                "trained_at",
+                "evidence_ids",
+                "metadata",
+            },
+            "model_candidate",
+        )
+        metadata = data["metadata"]
+        if not isinstance(metadata, Mapping):
+            raise ModelInnerContractError("metadata must be an object")
+        return cls(
+            checkpoint_id=_required_str(data, "checkpoint_id"),
+            request_id=_required_str(data, "request_id"),
+            run_id=_required_str(data, "run_id"),
+            cycle=_required_int(data, "cycle"),
+            model_id=_required_str(data, "model_id"),
+            parent_checkpoint_id=_required_str(data, "parent_checkpoint_id"),
+            dataset_id=_required_str(data, "dataset_id"),
+            dataset_sha256=_required_str(data, "dataset_sha256"),
+            artifact_path=_required_str(data, "artifact_path"),
+            artifact_sha256=_required_str(data, "artifact_sha256"),
+            training_loss=_required_float(data, "training_loss"),
+            training_cost_usd=_required_float(data, "training_cost_usd"),
+            trained_at=_required_str(data, "trained_at"),
+            evidence_ids=_required_str_tuple(data, "evidence_ids"),
+            metadata=_safe_metadata(metadata, "metadata"),
+        )
+
     def _content_payload(self) -> dict[str, JSONValue]:
         return {
             "request_id": self.request_id,

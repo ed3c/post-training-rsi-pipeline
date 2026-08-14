@@ -190,3 +190,9 @@ merge/rebase/force-push shared branches
 enable Git Town
 claim production readiness
 ```
+
+<!-- PR13_FORENSIC_RECOVERY_INDEX_START -->
+## `recovery_bundle/` ownership
+
+`recovery_bundle/` owns deterministic local export, content-addressed blobs, manifest verification, inactive reconstruction, and staged-copy verification. It must not own semantic Co-Evolution audit, approval authority, live pointer mutation, provider operations, remote storage credentials, retained-lock recovery, or automatic disaster recovery. Read `recovery_bundle/AGENTS.md` before modifying this package.
+<!-- PR13_FORENSIC_RECOVERY_INDEX_END -->
