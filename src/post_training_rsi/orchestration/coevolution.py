@@ -111,6 +111,9 @@ class CoEvolutionRunResult:
     total_cost_usd: float
     pending_approval_request_id: str | None
     report_path: str
+    # A completed run and a run a reviewer denied both report STOPPED, so the
+    # terminal reason is the only thing that separates success from refusal.
+    stop_reason: str | None
 
     def to_dict(self) -> dict[str, JSONValue]:
         return {
@@ -126,6 +129,7 @@ class CoEvolutionRunResult:
             "total_cost_usd": self.total_cost_usd,
             "pending_approval_request_id": self.pending_approval_request_id,
             "report_path": self.report_path,
+            "stop_reason": self.stop_reason,
         }
 
 
@@ -1482,7 +1486,12 @@ class CoEvolutionController:
         active_bundle = self.harness_snapshot_store.load(
             metadata.active_harness_id
         )
-        base_prompt = active_bundle.spec.system_prompt.split("\n\n", 1)[0]
+        # The control-plane text contract rejects control characters, so a
+        # system prompt is always single-line and mutation appends with a space
+        # (see HarnessMutator). There is no paragraph boundary to cut on, so
+        # slimming preserves the prompt whole — including every safety rule an
+        # appendix added — and narrows only the retry budget.
+        base_prompt = active_bundle.spec.system_prompt
         payload: dict[str, JSONValue] = {
             "parent_harness_id": active_bundle.spec.harness_id,
             "cycle": current.cycle,
@@ -2637,10 +2646,14 @@ class CoEvolutionController:
         metadata: CoEvolutionRunMetadata,
         snapshot: StateSnapshot,
     ) -> CoEvolutionRunResult:
+        stop_reason = (
+            snapshot.stop_reason.value if snapshot.stop_reason is not None else None
+        )
         report = {
             "run_id": self.run_id,
             "status": metadata.status,
             "state": snapshot.state.value,
+            "stop_reason": stop_reason,
             "current_cycle": metadata.current_cycle,
             "completed_cycles": metadata.completed_cycles,
             "active_checkpoint_id": metadata.active_checkpoint_id,
@@ -2674,6 +2687,7 @@ class CoEvolutionController:
                 metadata.pending_approval_request_id
             ),
             report_path=path.as_posix(),
+            stop_reason=stop_reason,
         )
 
 

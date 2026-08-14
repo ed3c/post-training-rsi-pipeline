@@ -243,5 +243,8 @@ def test_dataset_denial_stops_before_model_training(tmp_path: Path, capsys) -> N
     denied = run()
     assert denied.status == "STOPPED"
     assert denied.state == "STOPPED"
+    # A denial and a completed run share status and state, so only the terminal
+    # reason keeps a refusal from reading as success.
+    assert denied.stop_reason == "APPROVAL_NOT_GRANTED"
     assert denied.active_checkpoint_id.startswith("checkpoint-bootstrap-")
     assert not (workspace / "model-candidates").exists()

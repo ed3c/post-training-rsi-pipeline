@@ -70,11 +70,62 @@ def test_reference_coevolution_promotes_then_rolls_back_and_stops(tmp_path: Path
     assert result.active_harness_id.startswith("harness-")
     assert result.active_harness_score > 0.50
     assert result.pending_approval_request_id is None
+    assert result.stop_reason == "CYCLE_LIMIT"
     assert Path(result.report_path).is_file()
 
     payload = json.loads(Path(result.report_path).read_text(encoding="utf-8"))
     assert payload["active_checkpoint_id"] == result.active_checkpoint_id
     assert payload["completed_cycles"] == 2
+
+
+def test_slimmed_harness_preserves_rules_and_boundaries(tmp_path: Path) -> None:
+    """Slimming may narrow the retry budget; it may not drop prompt rules or tools."""
+    build_reference_coevolution_controller(
+        _config(),
+        workspace=tmp_path,
+        run_id="coevolution-slim-run",
+    ).run()
+
+    slims = sorted((tmp_path / "harness" / "slim").glob("*.json"))
+    assert slims, "model promotion must produce a slimmed Harness"
+    snapshots = HarnessSnapshotStore(tmp_path, ControlRecordStore(tmp_path))
+    for path in slims:
+        slim = json.loads(path.read_text(encoding="utf-8"))
+        parent = snapshots.load(slim["parent_harness_id"]).spec
+        assert slim["system_prompt"] == parent.system_prompt
+        assert tuple(slim["tools"]) == parent.tools
+        assert slim["timeout_seconds"] == parent.timeout_seconds
+        assert slim["max_steps"] == parent.max_steps
+        assert slim["retry_policy"]["max_attempts"] <= parent.retry_policy.max_attempts
+        assert slim["metadata"]["prompt_chars_after"] == len(parent.system_prompt)
+
+
+def test_reference_coevolution_aborts_on_budget_without_reporting_completion(
+    tmp_path: Path,
+) -> None:
+    """Budget exhaustion must terminate as ABORTED, never as a completed run."""
+    config = _config(
+        budget={
+            "total_limit_usd": 0.02,
+            "per_iteration_limit_usd": 0.01,
+            "max_consecutive_api_failures": 3,
+        }
+    )
+    result = build_reference_coevolution_controller(
+        config,
+        workspace=tmp_path,
+        run_id="coevolution-budget-run",
+    ).run()
+
+    assert result.status == "ABORTED"
+    assert result.state == "ABORTED"
+    assert result.completed_cycles == 0
+    assert result.stop_reason == "PER_ITERATION_BUDGET_EXCEEDED"
+    snapshot = ControlRecordStore(tmp_path).load_snapshot(
+        CoEvolutionRunStore(tmp_path).load().latest_snapshot_id
+    )
+    assert snapshot.stop_reason is not None
+    assert snapshot.stop_reason.value == result.stop_reason
 
 
 def test_reference_coevolution_exact_resume_is_idempotent(tmp_path: Path) -> None:
