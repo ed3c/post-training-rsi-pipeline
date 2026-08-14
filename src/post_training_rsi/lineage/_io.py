@@ -9,7 +9,6 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-from ..control_plane import JSONValue
 from ..control_plane.validation import canonical_json, normalize_json_object
 
 
@@ -67,6 +66,14 @@ def replace_atomic(path: str | Path, content: bytes) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     _atomic_replace(target, content)
+
+
+def replace_directory_atomic(source: str | Path, destination: str | Path) -> None:
+    source_path = Path(source)
+    destination_path = Path(destination)
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    os.replace(source_path, destination_path)
+    _fsync_directory(destination_path.parent)
 
 
 def verify_file_hash(path: str | Path, expected_sha256: str) -> None:
