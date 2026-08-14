@@ -190,7 +190,10 @@ class HarnessSnapshotStore:
             control_transaction_id=control_transaction_id,
             created_at=created_at,
         )
-        spec_bytes = canonical_json_bytes(spec.to_dict())
+        # Store the exact canonical bytes used by HarnessSpec.content_sha256.
+        # canonical_json_bytes adds a trailing newline and therefore belongs
+        # to manifest files, not the content-addressed Harness payload.
+        spec_bytes = spec.to_json().encode("utf-8")
         manifest_bytes = canonical_json_bytes(manifest.to_dict())
         final_directory = self._directory(spec.harness_id)
 

@@ -12,8 +12,8 @@ Read [`AGENTS.md`](AGENTS.md) before changing code. The document index is in [`d
 
 ## Current integration truth
 
-Current integration branch: `feat/rsi-convergence`  
-Draft integration PR: [#7 — converge RSI runtime contracts](https://github.com/ed3c/post-training-rsi-pipeline/pull/7)  
+Current integration branch: `feat/coevolution-convergence`  
+Draft integration PR: [#11 — converge durable Model/Harness Co-Evolution](https://github.com/ed3c/post-training-rsi-pipeline/pull/11)  
 Validated code head before the latest documentation commits: `ac334be8411f45196d2522c885ff893cb2d44fda`  
 Package version: `0.2.0`
 
@@ -31,7 +31,7 @@ PR #7 now composes the State-domain contracts, RSI decision policy, transactiona
 | Adapter runtime | Supported by composition | Strict mock/command selection, bounded execution, artifact verification, endpoint teardown |
 | HITL Dataset/Checkpoint review | Supported when configured | Missing, pending, denied, expired, unauthorized, or mismatched review fails closed |
 | Historical Peak | Supported | Promotion requires strict score improvement and a committed promotion Decision |
-| Model/Harness Co-Evolution | Not yet supported | Harness components may exist, but no `coevolve` CLI or converged outer/middle/inner loop |
+| Model/Harness Co-Evolution | Supported deterministic reference | `coevolve` composes frozen-model Harness search, observable Trace harvesting, model inner-loop evaluation, durable resume, pointer history, and rollback/stop guards |
 | Real cloud/GPU execution | Not verified | No claim of real Teacher API, TRL/DeepSpeed job, live serving, or production benchmark run |
 | Git Town stack | Not configured | Ordinary GitHub parent/child and sibling PRs only; Git Town remains fail closed |
 
@@ -62,6 +62,16 @@ post-training-rsi \
   --workspace artifacts/rsi \
   --run-id run-local-001 \
   rsi
+```
+
+Run or resume the deterministic Co-Evolution reference runtime:
+
+```bash
+post-training-rsi \
+  --config configs/pipeline.example.json \
+  --workspace artifacts/coevolution \
+  --run-id coevolution-local-001 \
+  coevolve
 ```
 
 Verify a JSONL Dataset:
@@ -114,7 +124,7 @@ make test
 make demo
 ```
 
-`make coevolve` remains intentionally red until a supported Co-Evolution command lands.
+`make coevolve` runs the deterministic local reference composition. It does not authorize real GPU, cloud endpoint, production benchmark, or autonomous Git mutation.
 
 ## 1. Supported RSI State Machine
 
@@ -201,7 +211,7 @@ post-training-rsi-pipeline/
 │   ├── architecture.md                    target source architecture
 │   └── productionization.md               real infrastructure requirements
 ├── src/post_training_rsi/
-│   ├── __main__.py                        CLI dispatch: demo/rsi/verify/audit/approvals/review
+│   ├── __main__.py                        CLI dispatch: demo/rsi/coevolve/verify/audit/approvals/review
 │   ├── config.py                          CONFIG_LOADED / CONFIG_REJECTED
 │   ├── control_plane/
 │   │   ├── enums.py                       State/Event/Stop/Action/Subject/Evidence taxonomy
@@ -222,7 +232,7 @@ post-training-rsi-pipeline/
 │   ├── cost.py                            stage cost and circuit accounting
 │   ├── models.py                          legacy/current portable payloads
 │   ├── engine.py                          one-pass compatibility `demo`
-│   └── harness/                           future Co-Evolution components; not CLI-converged
+│   └── harness/                           outer/middle/inner Co-Evolution components and durable persistence
 ├── tests/                                 deterministic, no-network/no-GPU evidence
 └── .github/workflows/ci.yml               compile, lint, type, tests, CLI smoke
 ```
