@@ -1,74 +1,107 @@
-# Architecture
+# Target architecture derived from the source PDF
+
+> This document describes the intended architecture. Reachability and completion status live in [`implementation-status.md`](implementation-status.md). Transition details live in [`state-machine.md`](state-machine.md).
 
 ## Five-stage RSI loop
 
-1. **Diagnose** the active checkpoint from benchmark failure traces.
-2. **Synthesize** targeted examples with a versioned teacher prompt.
-3. **Verify** exact uniqueness, lexical diversity, semantic novelty, benchmark separation, safety, and optional Python static checks.
-4. **Train** a candidate checkpoint through a provider-neutral trainer adapter.
-5. **Evaluate and decide** whether to promote the candidate, keep the historical peak, quarantine a regressed dataset, or stop.
+1. **Diagnose** the active/peak checkpoint using benchmark failure trajectories.
+2. **Form a data hypothesis** that targets a measurable capability gap.
+3. **Synthesize and verify** versioned Teacher data through diversity, decontamination, safety, and deterministic correctness gates.
+4. **Train** a candidate through a provider-neutral SFT/DPO adapter.
+5. **Evaluate and decide** whether to promote, reject, quarantine, roll back, or stop.
 
-Every state transition emits JSON/JSONL evidence. The controller never treats the latest checkpoint as the best checkpoint automatically.
+The historical Peak must remain separate from the latest candidate. This directly addresses the source PDF's warning that continued search after a peak frequently ends below the historical best.
 
 ```mermaid
-stateDiagram-v2
-    [*] --> Diagnose
-    Diagnose --> Synthesize
-    Synthesize --> Abort: budget exceeded
-    Synthesize --> Verify
-    Verify --> Abort: low diversity
-    Verify --> Train
-    Train --> Evaluate
-    Evaluate --> Promote: score > peak + delta
-    Evaluate --> Reject: score <= peak
-    Promote --> Diagnose
-    Reject --> Diagnose
-    Diagnose --> [*]: max iterations or plateau
+flowchart TD
+    D[Diagnose failures] --> H[Versioned data hypothesis]
+    H --> S[Teacher synthesis]
+    S --> B{Budget/provider circuit}
+    B -- open --> A[Abort with ledger evidence]
+    B -- closed --> V[Verification stack]
+    V --> Q{Acceptance/diversity/safety floor}
+    Q -- fail --> Z[Quarantine + root-cause evidence]
+    Q -- pass --> T[SFT/DPO candidate training]
+    T --> E[Ephemeral serving + benchmark]
+    E --> P{Candidate > Peak + delta?}
+    P -- yes --> M[Optional approval + promote Peak]
+    P -- no --> R[Reject/rollback; Peak unchanged]
+    M --> D
+    R --> D
 ```
 
-## Data verification order
+## Verification order
 
-The order is intentional:
+Cheap deterministic checks run first:
 
-1. exact duplicate rejection;
-2. Shannon entropy and Distinct-2/TTR checks;
+1. exact content-hash duplicate;
+2. Shannon entropy, Distinct-2, Type-Token Ratio, and loop signals;
 3. semantic novelty against accepted history;
-4. benchmark N-gram overlap and LCS checks;
-5. prompt/role injection checks;
-6. optional Python static allowlist checks.
+4. Benchmark N-gram overlap and LCS separation;
+5. prompt/role injection and safety classification;
+6. optional Python AST import/call allowlist;
+7. optional domain-specific deterministic verifier or sandbox result.
 
-Only accepted examples are appended to semantic history and included in the dataset hash.
+Only accepted records are added to semantic history and the immutable accepted-dataset hash.
 
-## Model/Harness co-evolution
+## Model/Harness Co-Evolution
 
-The controller freezes the model while searching Harness candidates. When Harness improvement plateaus, it harvests successful observable traces, runs them through the same verification gates, and trains a candidate model. The model is promoted only when it beats the active model under the accepted Harness. A promoted model causes the Harness prompt to be slimmed and the outer loop to restart.
+The target system uses three connected loops:
 
-## Lineage graph
+- **Outer loop — Harness optimization:** freeze model weights; mutate Prompt, tool contracts, retry/context policy; validate and benchmark candidates; keep only improved Harness snapshots.
+- **Middle loop — trajectory harvesting:** on Harness plateau, collect successful observable traces and run them through the same data gates.
+- **Inner loop — model optimization:** train and evaluate a candidate model from verified traces; promote only if it beats the active model; otherwise roll back.
+
+A promoted model triggers Harness slimming and restarts the outer loop.
+
+```mermaid
+flowchart LR
+    F[Freeze active model] --> HM[Mutate Harness]
+    HM --> HV[Static/policy validation]
+    HV --> HE[Harness benchmark]
+    HE -->|improves| HA[Accept snapshot]
+    HA --> HM
+    HE -->|plateau| TH[Harvest successful traces]
+    TH --> TV[Verify trajectories]
+    TV --> MT[Train model candidate]
+    MT --> ME[Evaluate model candidate]
+    ME -->|better| MP[Promote + hot-swap]
+    ME -->|not better| MR[Rollback]
+    MP --> HS[Slim Harness]
+    HS --> F
+    MR --> F
+```
+
+## Evidence and lineage
+
+Every promotion decision should be reconstructible from:
 
 ```text
-teacher API version
-       +
-teacher prompt hash
-       |
-       v
-raw examples -> filter audit -> accepted dataset hash -> candidate checkpoint
-                                                      |
-                                                      v
-                                          benchmark score + decision
-                                                      |
-                           +--------------------------+------------------+
-                           |                                             |
-                         PEAK                                    REJECTED/QUARANTINED
+Teacher model/API + Teacher prompt hash + hypothesis
+                             |
+                             v
+raw records -> per-record filter decisions -> accepted dataset bytes/hash
+                                                  |
+                                                  v
+parent checkpoint -> training job -> candidate artifact hash
+                                                  |
+                                                  v
+serving endpoint -> benchmark/task-family scores/failure traces
+                                                  |
+                                                  v
+peak comparison + approval + decision + stop counters
 ```
 
-A checkpoint manifest records its parent checkpoint, dataset hash, teacher API version, teacher-prompt hash, filter-policy hash, training loss, benchmark score, code commit, and promotion state.
+The local manifest is the control-plane source of truth. DVC/lakeFS and MLflow are mirrors, not hidden decision makers.
 
 ## Control-plane invariants
 
-- API cost cannot exceed the per-trial or total run limit.
-- Data cannot enter training without a deterministic filter decision.
-- A candidate cannot replace the active checkpoint unless it beats the peak by `min_delta`.
-- A rejected candidate never becomes the parent of the next trial.
-- Regressed datasets are marked `DIRTY` and remain traceable.
-- Harness mutation is candidate-based; rejected Harness versions do not replace the accepted snapshot.
-- The default runtime does not mutate Git or launch infrastructure implicitly.
+- The latest checkpoint is not automatically the Peak.
+- A rejected candidate never becomes a future parent.
+- Every training record has one explicit admission decision.
+- Every terminal path writes a reason, ledger snapshot, and relevant lineage.
+- Adapter retries and recursive loops are bounded.
+- Generated code is never executed inside the core runtime.
+- External serving is always torn down after evaluation.
+- Dataset, Model, and Harness approvals fail closed when enabled.
+- Git mutation is not part of the default Harness optimizer; accepted snapshots are artifacts first, reviewed Git changes second.
