@@ -1,0 +1,21 @@
+{
+  "schema_version": "post-training-rsi.validation/v1",
+  "repository": "ed3c/post-training-rsi-pipeline",
+  "branch": "feat/trace-harvesting",
+  "tested_commit": "ba0fe87c0aac56556c3b7c141fe14fae983f32b6",
+  "tested_tree": "4ba549dc3d5606adb84cc9f4a2b2a7a1da2a7e72",
+  "run_id": "31794090644",
+  "run_attempt": 1,
+  "run_event": "pull_request",
+  "matrix": ["Python 3.11", "Python 3.12"],
+  "checks": [
+    {"name": "install", "status": "PASS"},
+    {"name": "compile and Ruff", "status": "PASS"},
+    {"name": "observable Trace and Dataset matrix", "status": "PASS"},
+    {"name": "full pytest and coverage floor", "status": "PASS", "details": "131 passed; 86.91% coverage"},
+    {"name": "compatibility CLI smoke", "status": "PASS"}
+  ],
+  "overall_status": "PASS",
+  "validated_at": "2026-08-14T10:55:00Z",
+  "non_claims": ["hidden chain-of-thought capture", "production trace quality", "model training", "Git Town stack"]
+}
