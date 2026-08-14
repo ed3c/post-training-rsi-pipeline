@@ -37,7 +37,15 @@ class HarnessMutator:
 
         system_prompt = parent.system_prompt
         if proposal.prompt_appendix:
-            system_prompt = f"{system_prompt.rstrip()}\n\n{proposal.prompt_appendix.strip()}"
+            # Shared control-plane text contracts reject control characters,
+            # including newlines. Keep the composed prompt canonical by using
+            # a visible separator rather than embedding paragraph breaks.
+            system_prompt = " ".join(
+                (
+                    system_prompt.rstrip(),
+                    proposal.prompt_appendix.strip(),
+                )
+            )
 
         retry_policy = parent.retry_policy
         if proposal.max_attempts is not None:
