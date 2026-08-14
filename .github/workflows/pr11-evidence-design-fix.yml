@@ -80,19 +80,24 @@ jobs:
           text = reference.read_text(encoding="utf-8")
           replacements = [
               (
-                  '            evidence_ids=(f"ev-reference-training-c{request.cycle:02d}",),',
+                  (
+                      "            evidence_ids=(\n"
+                      "                f\"ev-reference-training-c{request.cycle:02d}\",\n"
+                      "                f\"ev-reference-artifact-c{request.cycle:02d}\",\n"
+                      "            ),"
+                  ),
                   "            evidence_ids=request.evidence_ids,",
               ),
               (
-                  '            evidence_ids=(f"ev-reference-serving-c{candidate.cycle:02d}",),',
+                  '            evidence_ids=(f"ev-reference-deploy-c{candidate.cycle:02d}",),',
                   "            evidence_ids=candidate.evidence_ids,",
               ),
               (
-                  '            evidence_ids=(f"ev-reference-evaluation-c{candidate.cycle:02d}",),',
+                  '            evidence_ids=(f"ev-reference-model-eval-c{candidate.cycle:02d}",),',
                   "            evidence_ids=candidate.evidence_ids,",
               ),
               (
-                  '            evidence_ids=(f"ev-reference-teardown-c{lease.checkpoint_id[-4:]}",),',
+                  '            evidence_ids=(f"ev-reference-teardown-{lease.deployment_id}",),',
                   "            evidence_ids=lease.evidence_ids,",
               ),
           ]
