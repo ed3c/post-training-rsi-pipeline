@@ -1,0 +1,149 @@
+name: Repair PR12 Final
+
+on:
+  push:
+    branches:
+      - feat/coevolution-audit-recovery
+    paths:
+      - .github/workflows/repair-pr12-final.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact PR12 branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/coevolution-audit-recovery
+          fetch-depth: 0
+
+      - name: Verify final admission
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_parent="85a89f5055de09429543b01df99a20fde1c05aba"
+          test "$(git rev-parse HEAD^)" = "$expected_parent"
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/repair-pr12-final.yml"
+
+      - name: Reuse and apply locked transformer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64
+          import gzip
+          import hashlib
+          import re
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/repair-pr12-once.yml').read_text(
+              encoding='utf-8'
+          )
+          match = re.search(
+              r'PR12_TRANSFORMER_GZIP_BASE64: "([A-Za-z0-9+/=]+)"',
+              workflow,
+          )
+          if match is None:
+              raise SystemExit('locked transformer payload is missing')
+          raw = gzip.decompress(base64.b64decode(match.group(1)))
+          actual = hashlib.sha256(raw).hexdigest()
+          expected = 'f0982cc7871aae13d4d659f0af8056d4f72b9ad3e0a938af2aa2979d1698f647'
+          if actual != expected:
+              raise SystemExit(
+                  f'transformer SHA-256 mismatch: expected {expected}, got {actual}'
+              )
+          Path('/tmp/apply_pr12_final.py').write_bytes(raw)
+          PY
+          python /tmp/apply_pr12_final.py
+          sed -i '/^import math$/d' src/post_training_rsi/harness/persistence.py
+          rm -f \
+            .github/workflows/repair-pr12-once.yml \
+            .github/workflows/repair-pr12-retry.yml \
+            .github/workflows/repair-pr12-final.yml \
+            .github/workflows/export-pr12-source.yml
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+          git checkout -- src/post_training_rsi_pipeline.egg-info
+
+      - name: Static and exact-base type validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin feat/coevolution-convergence
+          python -m compileall -q src tests scripts
+          ruff check src tests scripts
+          python scripts/check_mypy_delta.py \
+            --base-ref origin/feat/coevolution-convergence
+          git diff --check
+
+      - name: Focused PR12 contract matrix
+        run: |
+          python -m pytest -q \
+            tests/test_coevolution_audit.py \
+            tests/test_coevolution_audit_cli.py \
+            tests/test_architecture_manifest.py \
+            tests/test_documentation_contract.py
+
+      - name: Full suite and coverage floor
+        run: |
+          python -m pytest -q \
+            --cov=post_training_rsi \
+            --cov-report=term-missing \
+            --cov-fail-under=75
+
+      - name: Deterministic Co-Evolution status and audit smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          workspace=/tmp/pr12-final-smoke
+          rm -rf "$workspace"
+          python -m post_training_rsi \
+            --workspace "$workspace" \
+            --run-id pr12-final-smoke \
+            coevolve >/tmp/pr12-coevolve.json
+          python -m post_training_rsi \
+            --workspace "$workspace" \
+            coevolve-status \
+            --expect-run-id pr12-final-smoke >/tmp/pr12-status.json
+          python -m post_training_rsi \
+            --workspace "$workspace" \
+            coevolve-audit \
+            --expect-run-id pr12-final-smoke >/tmp/pr12-audit.json
+          python -m json.tool /tmp/pr12-coevolve.json >/dev/null
+          python -m json.tool /tmp/pr12-status.json >/dev/null
+          python -m json.tool /tmp/pr12-audit.json >/dev/null
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          result = json.loads(Path('/tmp/pr12-coevolve.json').read_text())
+          status = json.loads(Path('/tmp/pr12-status.json').read_text())
+          audit = json.loads(Path('/tmp/pr12-audit.json').read_text())
+          assert result['status'] == 'STOPPED', result
+          assert status['runtime_status'] == 'STOPPED', status
+          assert status['state'] == 'STOPPED', status
+          assert audit['status'] == 'PASS', audit
+          assert Path(audit['report_path']).is_file(), audit
+          PY
+
+      - name: Commit validated exact repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "ed3c"
+          git config user.email "mcnum01@gmail.com"
+          git add -A
+          git commit -m "fix(audit): close Co-Evolution evidence and recovery gaps"
+          git push origin HEAD:feat/coevolution-audit-recovery
