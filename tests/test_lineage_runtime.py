@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from post_training_rsi.control_plane import (
+    ControlContractError,
     ControlEvent,
     ControlState,
     DecisionAction,
@@ -19,6 +20,7 @@ from post_training_rsi.control_plane import (
     TransitionRecord,
 )
 from post_training_rsi.lineage import (
+    CheckpointBundle,
     CheckpointBundleStore,
     ControlRecordStore,
     LineageConflictError,
@@ -98,9 +100,13 @@ def promotion_records(
         cycle=0,
         state=target_state,
         entered_at=NOW,
-        active_checkpoint_id=(checkpoint_id if action is DecisionAction.PROMOTE else "ckpt-old"),
+        active_checkpoint_id=(
+            checkpoint_id if action is DecisionAction.PROMOTE else "ckpt-old"
+        ),
         candidate_checkpoint_id=checkpoint_id,
-        peak_checkpoint_id=(checkpoint_id if action is DecisionAction.PROMOTE else "ckpt-old"),
+        peak_checkpoint_id=(
+            checkpoint_id if action is DecisionAction.PROMOTE else "ckpt-old"
+        ),
         candidate_score=0.72,
         peak_score=(0.72 if action is DecisionAction.PROMOTE else 0.70),
         plateau_count=(0 if action is DecisionAction.PROMOTE else 1),
@@ -227,7 +233,7 @@ def commit_checkpoint_bundle(
     ControlRecordStore,
     CheckpointBundleStore,
     Path,
-    object,
+    CheckpointBundle,
     DecisionRecord,
 ]:
     control_store, transaction_id, records = commit_promotion_transaction(
@@ -544,9 +550,7 @@ def test_peak_pointer_compare_and_swap_and_idempotent_retry(tmp_path: Path) -> N
     assert first == pointer
     assert retry == pointer
     assert peak_store.load() == pointer
-    assert (
-        tmp_path / "peak_history/iter-000001-ckpt-001.json"
-    ).exists()
+    assert (tmp_path / "peak_history/iter-000001-ckpt-001.json").exists()
 
     stale = replace(
         pointer,
@@ -589,13 +593,6 @@ def test_peak_pointer_requires_promote_decision_and_valid_bundle_hash(
             expected_previous_checkpoint_id=None,
         )
 
-    invalid_hash_pointer = replace(
-        rejected_pointer,
-        decision_id="decision-ckpt-rejected",
-        checkpoint_bundle_sha256="0" * 64,
-    )
-    # The non-PROMOTE Decision is checked before the bundle hash, so use a valid
-    # promotion bundle in a separate store to cover the bundle-hash invariant.
     other_root = tmp_path / "other"
     other_control, other_checkpoints, _, good_bundle, good_decision = (
         commit_checkpoint_bundle(other_root)
