@@ -24,9 +24,9 @@ from post_training_rsi.harness.trace_harvesting import (
     TraceDatasetResult,
     TraceEventType,
     TraceHarvestConfig,
+    TraceHarvester,
     TraceHarvestLimits,
     TraceHarvestPolicy,
-    TraceHarvester,
     TracePolicyInvariantError,
     TraceVerificationService,
 )

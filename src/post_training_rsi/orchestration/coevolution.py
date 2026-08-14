@@ -74,9 +74,9 @@ from ..harness.reference_runtime import (
 )
 from ..harness.trace_harvesting import (
     TraceHarvestConfig,
+    TraceHarvester,
     TraceHarvestLimits,
     TraceHarvestPolicy,
-    TraceHarvester,
     TraceVerificationService,
 )
 from ..lineage import (
@@ -89,7 +89,6 @@ from ..lineage import (
     QuarantineMarker,
     QuarantineStore,
 )
-from ..models import RSIRunResult
 from ..verification.pipeline import VerificationPipeline
 
 ControlRecord: TypeAlias = (
@@ -732,7 +731,7 @@ class CoEvolutionController:
             created_at=mutation_evidence.created_at,
             evidence_ids=(mutation_evidence.evidence_id,),
         )
-        committed_created = self._commit_step(
+        self._commit_step(
             created_step,
             evidence=(mutation_evidence,),
             label="harness-mutated",
@@ -1042,7 +1041,7 @@ class CoEvolutionController:
         )
         trace_policy = self._trace_policy()
         harvested_step = trace_policy.batch_harvested(current, batch)
-        committed_harvest = self._commit_step(
+        self._commit_step(
             harvested_step,
             evidence=(harvest_evidence,),
             label="trace-harvested",
@@ -1163,7 +1162,7 @@ class CoEvolutionController:
             current,
             execution.bundle.candidate,
         )
-        committed_training = self._commit_step(
+        self._commit_step(
             trained_step,
             evidence=training_evidence,
             label="model-trained",
