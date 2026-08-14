@@ -1409,6 +1409,25 @@ class CoEvolutionController:
                 evidence_ids=(rollback_evidence.evidence_id,),
             ),
         )
+        # The pure inner-loop policy resets the next cycle to iteration 0.
+        # Persistence, however, must first commit the rollback Evidence and
+        # its dependent Decision/Transition/Snapshot in the producer
+        # iteration. The following outer-cycle start creates iteration-0
+        # records separately, after this transaction is committed.
+        rollback_snapshot = replace(
+            rollback_step.final_snapshot,
+            snapshot_id=_record_id(
+                "snapshot-model-rollback-committed",
+                self.run_id,
+                current.iteration,
+                decision.subject_id,
+            ),
+            iteration=current.iteration,
+        )
+        rollback_step = replace(
+            rollback_step,
+            snapshots=(rollback_snapshot,),
+        )
         committed = self._commit_step(
             rollback_step,
             evidence=(rollback_evidence,),
