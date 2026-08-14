@@ -1,0 +1,100 @@
+name: Repair PR12 Once
+
+on:
+  push:
+    branches:
+      - feat/coevolution-audit-recovery
+    paths:
+      - .github/workflows/repair-pr12-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR12 branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/coevolution-audit-recovery
+          fetch-depth: 0
+
+      - name: Apply deterministic lint repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          audit = Path('src/post_training_rsi/audit/coevolution.py')
+          text = audit.read_text(encoding='utf-8')
+          old = 'from ..control_plane import DecisionSubject, StateSnapshot\n'
+          new = 'from ..control_plane import StateSnapshot\n'
+          if old not in text:
+              raise SystemExit('expected unused DecisionSubject import not found')
+          audit.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          tests = Path('tests/test_coevolution_audit.py')
+          text = tests.read_text(encoding='utf-8')
+          old = 'import pytest\n\n'
+          if old not in text:
+              raise SystemExit('expected unused pytest import not found')
+          tests.write_text(text.replace(old, '', 1), encoding='utf-8')
+          PY
+          rm .github/workflows/repair-pr12-once.yml
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+
+      - name: Validate repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q src tests
+          ruff check src tests
+          mypy src
+          python -m pytest -q \
+            tests/test_coevolution_audit.py \
+            tests/test_coevolution_audit_cli.py \
+            tests/test_architecture_manifest.py \
+            tests/test_documentation_contract.py
+          python -m pytest -q \
+            --cov=post_training_rsi \
+            --cov-report=term-missing \
+            --cov-fail-under=75
+          workspace=/tmp/pr12-repair-smoke
+          rm -rf "$workspace"
+          python -m post_training_rsi \
+            --workspace "$workspace" \
+            --run-id pr12-repair \
+            coevolve >/tmp/pr12-coevolve.json
+          python -m post_training_rsi \
+            --workspace "$workspace" \
+            coevolve-status >/tmp/pr12-status.json
+          python -m post_training_rsi \
+            --workspace "$workspace" \
+            coevolve-audit >/tmp/pr12-audit.json
+          python -m json.tool /tmp/pr12-status.json >/dev/null
+          python -m json.tool /tmp/pr12-audit.json >/dev/null
+
+      - name: Commit validated repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'ed3c'
+          git config user.email 'mcnum01@gmail.com'
+          git add \
+            src/post_training_rsi/audit/coevolution.py \
+            tests/test_coevolution_audit.py \
+            .github/workflows/repair-pr12-once.yml
+          git commit -m 'fix(audit): satisfy exact-head static validation'
+          git push origin HEAD:feat/coevolution-audit-recovery
