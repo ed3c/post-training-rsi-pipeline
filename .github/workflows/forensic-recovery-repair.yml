@@ -1,0 +1,154 @@
+name: Forensic Recovery Repair
+
+on:
+  push:
+    branches:
+      - feat/forensic-recovery-bundle
+    paths:
+      - "src/post_training_rsi/recovery_bundle/**"
+      - "tests/test_recovery_bundle.py"
+      - "tests/test_recovery_bundle_cli.py"
+      - "docs/forensic-recovery-bundle.md"
+      - ".github/workflows/forensic-recovery-repair.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-publish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/forensic-recovery-bundle
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: python -m pip install --upgrade pip && python -m pip install -e '.[dev]'
+
+      - name: Format and static validation
+        run: |
+          python -m compileall -q src tests
+          ruff check --fix src tests
+          ruff format src/post_training_rsi/recovery_bundle tests/test_recovery_bundle.py tests/test_recovery_bundle_cli.py
+          ruff check src tests
+          mypy src
+
+      - name: Focused tests
+        run: |
+          python -m pytest -q \
+            tests/test_recovery_bundle.py \
+            tests/test_recovery_bundle_cli.py
+
+      - name: Full repository gate
+        run: |
+          python -m pytest -q \
+            --cov=post_training_rsi \
+            --cov-report=term-missing \
+            --cov-fail-under=75
+
+      - name: Package CLI smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$(mktemp -d)"
+          mkdir -p "$root/source/nested"
+          printf '%s\n' '{"run_id":"ci-recovery","state":"STOPPED"}' > "$root/source/run.json"
+          printf '%s\n' 'verified evidence' > "$root/source/nested/evidence.txt"
+          python -m post_training_rsi.recovery_bundle create \
+            --source "$root/source" \
+            --bundle "$root/bundle" \
+            --source-label ci-recovery-generation
+          python -m post_training_rsi.recovery_bundle verify \
+            --bundle "$root/bundle"
+          python -m post_training_rsi.recovery_bundle stage \
+            --bundle "$root/bundle" \
+            --destination "$root/staged"
+          python -m post_training_rsi.recovery_bundle verify-stage \
+            --bundle "$root/bundle" \
+            --destination "$root/staged"
+          cmp "$root/source/run.json" "$root/staged/run.json"
+          cmp "$root/source/nested/evidence.txt" "$root/staged/nested/evidence.txt"
+
+      - name: Write exact validation evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p docs/validation
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import subprocess
+          from pathlib import Path
+
+          head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          payload = {
+              "schema_version": "post-training-rsi.validation/v1",
+              "component": "forensic-recovery-bundle",
+              "branch": "feat/forensic-recovery-bundle",
+              "validated_input_head": head,
+              "python": "3.11",
+              "gates": {
+                  "compileall": "PASS",
+                  "ruff": "PASS",
+                  "mypy": "PASS",
+                  "focused_tests": "PASS",
+                  "full_pytest_coverage_floor": "PASS",
+                  "package_cli_smoke": "PASS",
+                  "stage_byte_comparison": "PASS",
+              },
+              "non_claims": [
+                  "no automatic activation",
+                  "no remote backup",
+                  "no production recovery authorization",
+                  "no distributed writer safety",
+              ],
+          }
+          canonical = json.dumps(
+              payload,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          )
+          payload["evidence_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+          json_path = Path("docs/validation/forensic-recovery-bundle-latest.json")
+          json_path.write_text(
+              json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          markdown = f"""# Forensic recovery bundle validation\n\n- Branch: `feat/forensic-recovery-bundle`\n- Validated input head: `{head}`\n- Python: `3.11`\n- Evidence SHA-256: `{payload['evidence_sha256']}`\n\n## Passed gates\n\n```text\ncompileall\nRuff\nmypy\nfocused recovery tests\nfull pytest coverage floor\npackage CLI create/verify/stage/verify-stage\nstaged byte comparison\n```\n\n## Non-claims\n\nThis record does not prove automatic activation, remote backup, production recovery authorization, or distributed writer safety.\n"""
+          Path("docs/validation/forensic-recovery-bundle-latest.md").write_text(
+              markdown,
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Commit validated repairs and evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No repair or evidence change to commit."
+            exit 0
+          fi
+          git config user.name "ed3c"
+          git config user.email "mcnum01@gmail.com"
+          git add \
+            src/post_training_rsi/recovery_bundle \
+            tests/test_recovery_bundle.py \
+            tests/test_recovery_bundle_cli.py \
+            docs/validation/forensic-recovery-bundle-latest.json \
+            docs/validation/forensic-recovery-bundle-latest.md
+          git commit -m "test(recovery): publish exact forensic bundle evidence"
+          git push origin HEAD:feat/forensic-recovery-bundle
