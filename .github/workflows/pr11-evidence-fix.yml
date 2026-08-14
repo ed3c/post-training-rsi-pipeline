@@ -1,0 +1,79 @@
+name: PR11 Model Evidence Dependency Repair
+
+on:
+  push:
+    branches:
+      - feat/coevolution-convergence
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: "${{ !contains(github.event.head_commit.message, 'fix(pr11): bind model policy to committed evidence') }}"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/coevolution-convergence
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Bind policy observations to persisted EvidenceRecords
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/post_training_rsi/orchestration/coevolution.py")
+          text = path.read_text(encoding="utf-8")
+
+          old = '''        trained_step = policy.training_completed(
+            policy_input,
+            execution.bundle.candidate,
+        )
+'''
+          new = '''        policy_candidate = replace(
+            execution.bundle.candidate,
+            evidence_ids=tuple(
+                evidence.evidence_id for evidence in training_evidence
+            ),
+        )
+        trained_step = policy.training_completed(
+            policy_input,
+            policy_candidate,
+        )
+'''
+          if text.count(old) != 1:
+              raise SystemExit("training policy call replacement did not match exactly once")
+          text = text.replace(old, new)
+
+          old = '''        evaluated_step = policy.evaluation_completed(
+            trained_step.final_snapshot,
+            execution.bundle.evaluation,
+        )
+'''
+          new = '''        policy_evaluation = replace(
+            execution.bundle.evaluation,
+            evidence_ids=tuple(
+                evidence.evidence_id for evidence in evaluation_evidence
+            ),
+        )
+        evaluated_step = policy.evaluation_completed(
+            trained_step.final_snapshot,
+            policy_evaluation,
+        )
+'''
+          if text.count(old) != 1:
+              raise SystemExit("evaluation policy call replacement did not match exactly once")
+          text = text.replace(old, new)
+
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Commit repair
+        run: |
+          git config user.name 'ed3c'
+          git config user.email 'mcnum01@gmail.com'
+          git add src/post_training_rsi/orchestration/coevolution.py
+          git commit -m 'fix(pr11): bind model policy to committed evidence'
+          git push origin HEAD:feat/coevolution-convergence
