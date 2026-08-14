@@ -49,6 +49,47 @@ jobs:
           if old not in text:
               raise SystemExit("expected unused pytest import not found")
           tests.write_text(text.replace(old, "", 1), encoding="utf-8")
+
+          cli = Path("src/post_training_rsi/__main__.py")
+          text = cli.read_text(encoding="utf-8")
+          replacements = {
+              "        result = build_default_engine(config, workspace=workspace).run()\n"
+              "        _print_json(result.to_dict())\n": (
+                  "        demo_result = build_default_engine(config, workspace=workspace).run()\n"
+                  "        _print_json(demo_result.to_dict())\n"
+              ),
+              "        result = build_converged_rsi_controller(\n"
+              "            config,\n"
+              "            workspace=workspace,\n"
+              "            run_id=args.run_id,\n"
+              "        ).run()\n"
+              "        _print_json(result.to_dict())\n": (
+                  "        rsi_result = build_converged_rsi_controller(\n"
+                  "            config,\n"
+                  "            workspace=workspace,\n"
+                  "            run_id=args.run_id,\n"
+                  "        ).run()\n"
+                  "        _print_json(rsi_result.to_dict())\n"
+              ),
+              "        result = build_reference_coevolution_controller(\n"
+              "            config,\n"
+              "            workspace=workspace,\n"
+              "            run_id=args.run_id,\n"
+              "        ).run()\n"
+              "        _print_json(result.to_dict())\n": (
+                  "        coevolution_result = build_reference_coevolution_controller(\n"
+                  "            config,\n"
+                  "            workspace=workspace,\n"
+                  "            run_id=args.run_id,\n"
+                  "        ).run()\n"
+                  "        _print_json(coevolution_result.to_dict())\n"
+              ),
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f"expected CLI repair target not found: {old!r}")
+              text = text.replace(old, new, 1)
+          cli.write_text(text, encoding="utf-8")
           PY
           rm .github/workflows/repair-pr12-once.yml
 
@@ -103,6 +144,7 @@ jobs:
           git config user.email "mcnum01@gmail.com"
           git add \
             src/post_training_rsi/audit/coevolution.py \
+            src/post_training_rsi/__main__.py \
             tests/test_coevolution_audit.py \
             .github/workflows/repair-pr12-once.yml
           git commit -m "fix(audit): satisfy exact-head static validation"
