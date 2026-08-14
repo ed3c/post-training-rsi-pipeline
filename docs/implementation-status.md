@@ -20,6 +20,7 @@ This file is the current integration truth. Component documents describe exact b
 | `coevolve` | Supported deterministic reference | durable local outer/middle/inner composition with resume, evidence, pointer history, rollback, and terminal guards; no real GPU/cloud claim |
 | `coevolve-status` | Supported read-only | Run pointer → latest transaction → latest StateSnapshot linkage; writes nothing |
 | `coevolve-audit` | Supported read-only | full durable evidence-graph verification; writes only `<workspace>/reports/coevolution-audit.json` and never repairs |
+| `provider-preflight` | Supported read-only | pre-transmission admission checks; no network, subprocess, GPU, or endpoint call; writes only `<workspace>/reports/provider-preflight.json`; passing does not claim any provider has run |
 
 Support here means reachable on `main` after the stacked PR #1–#12 merge.
 

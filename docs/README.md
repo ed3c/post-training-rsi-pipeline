@@ -41,6 +41,7 @@ Do not infer support from an enum value, dataclass, diagram, fixture, or isolate
 | [`state-machine.md`](state-machine.md) | current states, transition guards, durable records, terminal precedence, and Co-Evolution flow |
 | [`rsi-convergence.md`](rsi-convergence.md) | supported PR #7 RSI controller, data/evidence flow, resume semantics, CLI, and artifact layout |
 | [`coevolution-convergence.md`](coevolution-convergence.md) | PR #11 deterministic Co-Evolution reference composition, durable resume, pointer history, approval boundaries, and non-claims |
+| [`provider-preflight.md`](provider-preflight.md) | fail-closed provider admission checks, backend classification, redaction rules, and the destination-authorization receipt schema |
 | [`traceability-index.md`](traceability-index.md) | requirement → code → test → artifact → PR → status mapping |
 | [`stacked-pr-plan.md`](stacked-pr-plan.md) | actual PR graph, molecular successors, allowed paths, collision ownership, and Git Town admission |
 

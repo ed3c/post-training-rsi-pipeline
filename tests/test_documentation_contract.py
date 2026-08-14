@@ -11,6 +11,7 @@ COEVOLUTION_COMMANDS = {
     "coevolve-status",
     "coevolve-audit",
 }
+PREFLIGHT_COMMANDS = {"provider-preflight"}
 SUPPORTED_COMMANDS = {
     "demo",
     "rsi",
@@ -18,6 +19,7 @@ SUPPORTED_COMMANDS = {
     "audit",
     "approvals",
     "review",
+    "provider-preflight",
 } | COEVOLUTION_COMMANDS
 REQUIRED_DOCUMENTS = {
     "AGENTS.md",
@@ -36,6 +38,7 @@ REQUIRED_DOCUMENTS = {
     "docs/stacked-pr-plan.md",
     "docs/architecture.md",
     "docs/productionization.md",
+    "docs/provider-preflight.md",
     "src/post_training_rsi/AGENTS.md",
     "tests/AGENTS.md",
 }
@@ -73,15 +76,21 @@ def test_supported_cli_and_readme_stay_synchronized() -> None:
     coevolution = _read("docs/coevolution-convergence.md") + _read(
         "docs/coevolution-audit-recovery.md"
     )
+    preflight = _read("docs/provider-preflight.md")
     status = _read("docs/implementation-status.md")
-    for command in SUPPORTED_COMMANDS - COEVOLUTION_COMMANDS:
-        assert f"`{command}`" in readme
-        assert command in convergence
-        assert f"`{command}`" in status
-    for command in COEVOLUTION_COMMANDS:
-        assert f"`{command}`" in readme
-        assert command in coevolution
-        assert f"`{command}`" in status
+
+    # Each command is documented in the slice that owns it, so a new command
+    # cannot land by being mentioned in an unrelated design document.
+    owners = [
+        (SUPPORTED_COMMANDS - COEVOLUTION_COMMANDS - PREFLIGHT_COMMANDS, convergence),
+        (COEVOLUTION_COMMANDS, coevolution),
+        (PREFLIGHT_COMMANDS, preflight),
+    ]
+    for commands, owning_document in owners:
+        for command in commands:
+            assert f"`{command}`" in readme
+            assert command in owning_document
+            assert f"`{command}`" in status
 
 
 def test_required_document_graph_exists() -> None:
