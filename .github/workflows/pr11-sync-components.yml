@@ -1,0 +1,67 @@
+name: PR11 Synchronize Molecular Components
+
+on:
+  push:
+    branches:
+      - feat/coevolution-convergence
+
+permissions:
+  contents: write
+
+jobs:
+  synchronize:
+    if: "${{ !contains(github.event.head_commit.message, 'chore(pr11): synchronize PR8 PR9 PR10 heads') }}"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/coevolution-convergence
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Fetch molecular component heads
+        run: |
+          git fetch origin \
+            feat/harness-outer-loop:refs/remotes/origin/feat/harness-outer-loop \
+            feat/trace-harvesting:refs/remotes/origin/feat/trace-harvesting \
+            feat/model-inner-loop:refs/remotes/origin/feat/model-inner-loop
+
+      - name: Synchronize reviewed component-owned paths
+        run: |
+          git checkout origin/feat/harness-outer-loop -- \
+            src/post_training_rsi/harness/outer_loop \
+            tests/test_harness_outer_loop.py \
+            docs/harness-outer-loop.md
+
+          git checkout origin/feat/trace-harvesting -- \
+            src/post_training_rsi/harness/trace_harvesting \
+            tests/test_trace_harvesting.py \
+            tests/test_trace_harvesting_hardening.py \
+            docs/trace-harvesting.md
+
+          git checkout origin/feat/model-inner-loop -- \
+            src/post_training_rsi/harness/model_inner_loop \
+            tests/test_model_inner_loop.py \
+            docs/model-inner-loop.md
+
+      - name: Commit synchronized component heads
+        run: |
+          if git diff --cached --quiet && git diff --quiet; then
+            echo 'Component paths already synchronized.'
+            exit 0
+          fi
+          git config user.name 'ed3c'
+          git config user.email 'mcnum01@gmail.com'
+          git add \
+            src/post_training_rsi/harness/outer_loop \
+            src/post_training_rsi/harness/trace_harvesting \
+            src/post_training_rsi/harness/model_inner_loop \
+            tests/test_harness_outer_loop.py \
+            tests/test_trace_harvesting.py \
+            tests/test_trace_harvesting_hardening.py \
+            tests/test_model_inner_loop.py \
+            docs/harness-outer-loop.md \
+            docs/trace-harvesting.md \
+            docs/model-inner-loop.md
+          git commit -m 'chore(pr11): synchronize PR8 PR9 PR10 heads'
+          git push origin HEAD:feat/coevolution-convergence
