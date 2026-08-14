@@ -1,0 +1,17 @@
+{
+  "schema_version": "post-training-rsi.validation/v1",
+  "repository": "ed3c/post-training-rsi-pipeline",
+  "branch": "feat/coevolution-convergence",
+  "tested_commit": null,
+  "tested_tree": null,
+  "run_id": null,
+  "run_attempt": null,
+  "run_event": "pull_request",
+  "matrix": ["Python 3.11", "Python 3.12"],
+  "checks": [
+    {"name": "exact-head CI", "status": "PENDING", "details": "Manifest and validation-index repair must complete before the immutable PASS record is written."}
+  ],
+  "overall_status": "PENDING",
+  "validated_at": null,
+  "non_claims": ["production readiness", "real GPU training", "live cloud serving", "production benchmark validity", "Git Town stack"]
+}

@@ -1,13 +1,13 @@
 # Implementation status
 
-Status snapshot: Draft PR #7, branch `feat/rsi-convergence`  
+Status snapshot: Draft PR #11, branch `feat/coevolution-convergence`  
 Validated code head before the latest documentation commits: `ac334be8411f45196d2522c885ff893cb2d44fda`  
 Package version: `0.2.0`  
 Default branch status: PR #7 is not merged to `main`
 
 This file is the current integration truth. Component documents describe exact boundaries; `architecture.md` describes the target design.
 
-## 1. Supported CLI surface on PR #7
+## 1. Supported CLI surface on PR #11
 
 | Command | Status | Evidence boundary |
 |---|---|---|
@@ -17,9 +17,9 @@ This file is the current integration truth. Component documents describe exact b
 | `audit` | Supported | Checkpoint bundle, control transaction, lineage, and Peak relation reload/verification |
 | `approvals` | Supported | immutable approval request listing and status derivation |
 | `review` | Supported | immutable approve/deny Decision bound to exact Request SHA-256 |
-| `coevolve` | Planned | no supported CLI or converged Model/Harness outer/middle/inner loop |
+| `coevolve` | Supported deterministic reference | durable local outer/middle/inner composition with resume, evidence, pointer history, rollback, and terminal guards; no real GPU/cloud claim |
 
-Support here means reachable on `feat/rsi-convergence`, not on `main`.
+Support here means reachable on `feat/coevolution-convergence`, not on `main`.
 
 ## 2. Capability matrix
 
@@ -47,9 +47,9 @@ Support here means reachable on `feat/rsi-convergence`, not on `main`.
 | CAP-LIN-03 | Peak compare-and-swap | Supported | expected previous Peak, strict score/iteration monotonicity, promotion link | distributed consensus not implemented |
 | CAP-LIN-04 | quarantine/reject/rollback history | Supported | immutable evidence-backed markers | retention and legal-hold policy not implemented |
 | CAP-AUD-01 | reverse audit | Supported | `audit` reloads bundle, transaction, lineage, and Peak relation | cross-service audit index not implemented |
-| CAP-COEV-01 | Harness mutation outer loop | Planned integration | component files may exist | no supported State Machine/CLI convergence |
-| CAP-COEV-02 | successful trace harvesting | Planned integration | component files may exist | no supported middle-loop evidence graph |
-| CAP-COEV-03 | model inner loop and hot-swap | Planned | target architecture only | PR #10/#11 required |
+| CAP-COEV-01 | Harness mutation outer loop | Supported deterministic reference | frozen model, deterministic mutation/validation/evaluation, strict acceptance, approval and plateau handoff | production task suite and real tool execution not verified |
+| CAP-COEV-02 | successful observable trace harvesting | Supported deterministic reference | lineage-bound observable traces, common verification gates, immutable Trace Dataset and evidence | production privacy/representativeness not verified |
+| CAP-COEV-03 | model inner loop and hot-swap | Supported deterministic reference | exact Dataset/artifact/endpoint integrity, promotion/rollback commit separation, pointer update and next-cycle handoff | real gradient update and live serving not verified |
 | CAP-GT-01 | Git Town stack | Not configured | documentation-only PR graph | version/config/leases/rehearsal/stack.tsv/human approval missing |
 
 ## 3. Supported RSI flow
@@ -168,7 +168,7 @@ The repository does not currently claim:
 - live external benchmark validity;
 - enterprise authorization;
 - distributed transactional safety;
-- complete Model/Harness Co-Evolution;
+- production-grade or externally validated Model/Harness Co-Evolution;
 - active Git Town automation.
 
 Any future claim must include exact commit, configuration, data/artifact hashes, environment, command, result, and known limitations.

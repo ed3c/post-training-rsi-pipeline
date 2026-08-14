@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SUPPORTED_COMMANDS = {
     "demo",
     "rsi",
+    "coevolve",
     "verify",
     "audit",
     "approvals",
@@ -61,16 +62,19 @@ def _local_markdown_links(text: str) -> set[str]:
 
 def test_supported_cli_and_readme_stay_synchronized() -> None:
     commands = _cli_commands()
-    assert SUPPORTED_COMMANDS <= commands
-    assert "coevolve" not in commands
+    assert commands == SUPPORTED_COMMANDS
 
     readme = _read("README.md")
     convergence = _read("docs/rsi-convergence.md")
+    coevolution = _read("docs/coevolution-convergence.md")
     status = _read("docs/implementation-status.md")
-    for command in SUPPORTED_COMMANDS:
+    for command in SUPPORTED_COMMANDS - {"coevolve"}:
         assert f"`{command}`" in readme
         assert command in convergence
         assert f"`{command}`" in status
+    assert "`coevolve`" in readme
+    assert "coevolve" in coevolution
+    assert "`coevolve`" in status
 
 
 def test_required_document_graph_exists() -> None:

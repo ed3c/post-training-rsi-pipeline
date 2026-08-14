@@ -170,6 +170,9 @@ class ModelInnerPolicy:
             "artifact_sha256": candidate.artifact_sha256,
             "training_loss": candidate.training_loss,
             "training_cost_usd": candidate.training_cost_usd,
+            "candidate_trained_at": candidate.trained_at,
+            "candidate_evidence_ids": list(candidate.evidence_ids),
+            "candidate_metadata": dict(candidate.metadata),
             "active_model_score": self._active_model_score(current),
         }
         metadata.update(candidate.metadata)

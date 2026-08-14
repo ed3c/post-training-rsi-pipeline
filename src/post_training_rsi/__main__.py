@@ -16,7 +16,10 @@ from .lineage import (
     PeakPointerStore,
 )
 from .models import SyntheticExample
-from .orchestration import build_converged_rsi_controller
+from .orchestration import (
+    build_converged_rsi_controller,
+    build_reference_coevolution_controller,
+)
 from .verification.pipeline import VerificationPipeline
 
 
@@ -42,6 +45,19 @@ def _parser() -> argparse.ArgumentParser:
         "rsi",
         help="run or resume the converged multi-iteration RSI controller",
     )
+    coevolve = subparsers.add_parser(
+        "coevolve",
+        help=(
+            "run or resume the deterministic durable Model/Harness "
+            "Co-Evolution reference runtime"
+        ),
+        description=(
+            "Run the deterministic durable Model/Harness Co-Evolution "
+            "reference runtime. This command does not claim real GPU, "
+            "cloud provider, or production benchmark execution."
+        ),
+    )
+    coevolve.set_defaults(runtime_kind="deterministic-reference")
 
     verify = subparsers.add_parser(
         "verify",
@@ -84,17 +100,26 @@ def main(argv: list[str] | None = None) -> int:
     workspace = args.workspace.resolve()
 
     if args.command == "demo":
-        result = build_default_engine(config, workspace=workspace).run()
-        _print_json(result.to_dict())
+        demo_result = build_default_engine(config, workspace=workspace).run()
+        _print_json(demo_result.to_dict())
         return 0
 
     if args.command == "rsi":
-        result = build_converged_rsi_controller(
+        rsi_result = build_converged_rsi_controller(
             config,
             workspace=workspace,
             run_id=args.run_id,
         ).run()
-        _print_json(result.to_dict())
+        _print_json(rsi_result.to_dict())
+        return 0
+
+    if args.command == "coevolve":
+        coevolution_result = build_reference_coevolution_controller(
+            config,
+            workspace=workspace,
+            run_id=args.run_id,
+        ).run()
+        _print_json(coevolution_result.to_dict())
         return 0
 
     if args.command == "verify":

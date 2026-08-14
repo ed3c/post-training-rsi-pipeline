@@ -9,6 +9,7 @@ This directory separates supported runtime truth, implemented components, exact 
   → ../README.md
   → closest scoped AGENTS.md
   → docs/README.md
+  → architecture-manifest.json
   → implementation-status.md
   → state-machine.md
   → rsi-convergence.md
@@ -16,6 +17,8 @@ This directory separates supported runtime truth, implemented components, exact 
   → traceability-index.md
   → stacked-pr-plan.md
 ```
+
+The machine-readable directory → State Machine → evidence → PR index is [`architecture-manifest.json`](architecture-manifest.json).
 
 ## Status vocabulary
 
@@ -33,11 +36,13 @@ Do not infer support from an enum value, dataclass, diagram, fixture, or isolate
 
 | Document | Purpose |
 |---|---|
+| [`architecture-manifest.json`](architecture-manifest.json) | machine-readable supported commands, State Machines, directory ownership, evidence vocabulary, artifact index, Draft PR graph, validation index, and non-claims |
 | [`implementation-status.md`](implementation-status.md) | exact branch/PR status, supported commands, validation evidence, and open gaps |
-| [`state-machine.md`](state-machine.md) | current states, transition guards, durable records, terminal precedence, and Co-Evolution target |
-| [`rsi-convergence.md`](rsi-convergence.md) | supported PR #7 controller, data/evidence flow, resume semantics, CLI, and artifact layout |
+| [`state-machine.md`](state-machine.md) | current states, transition guards, durable records, terminal precedence, and Co-Evolution flow |
+| [`rsi-convergence.md`](rsi-convergence.md) | supported PR #7 RSI controller, data/evidence flow, resume semantics, CLI, and artifact layout |
+| [`coevolution-convergence.md`](coevolution-convergence.md) | PR #11 deterministic Co-Evolution reference composition, durable resume, pointer history, approval boundaries, and non-claims |
 | [`traceability-index.md`](traceability-index.md) | requirement → code → test → artifact → PR → status mapping |
-| [`stacked-pr-plan.md`](stacked-pr-plan.md) | actual PR graph, proposed molecular successors, allowed paths, collision ownership, and Git Town admission |
+| [`stacked-pr-plan.md`](stacked-pr-plan.md) | actual PR graph, molecular successors, allowed paths, collision ownership, and Git Town admission |
 
 ## Exact component contracts
 
@@ -48,37 +53,35 @@ Do not infer support from an enum value, dataclass, diagram, fixture, or isolate
 | [`adapter-runtime.md`](adapter-runtime.md) | strict provider selection, command protocol, artifact integrity, and serving lifecycle |
 | [`lineage-runtime.md`](lineage-runtime.md) | immutable control transactions, Checkpoint bundles, Peak CAS, and quarantine markers |
 | [`hitl-approval.md`](hitl-approval.md) | deterministic sampling, immutable review Decisions, authority validation, and fail-closed gates |
+| [`harness-outer-loop.md`](harness-outer-loop.md) | frozen-model Harness mutation, validation, benchmark, approval, strict acceptance, and plateau handoff |
+| [`trace-harvesting.md`](trace-harvesting.md) | successful observable Trace selection, common verification gates, immutable Trace Dataset, and training handoff |
+| [`model-inner-loop.md`](model-inner-loop.md) | exact Dataset/artifact/endpoint integrity, model decision policy, approval, promotion/rollback commit separation |
 
 ## Target and production documents
 
 | Document | Purpose |
 |---|---|
-| [`architecture.md`](architecture.md) | target PDF-derived RSI and Model/Harness Co-Evolution architecture |
-| [`integration-contracts.md`](integration-contracts.md) | provider-neutral boundaries where present; verify against current code before relying on it |
+| [`architecture.md`](architecture.md) | source-derived RSI and Model/Harness Co-Evolution architecture; target sections remain explicitly labeled |
+| [`integration-contracts.md`](integration-contracts.md) | provider-neutral boundaries and fail-closed composition obligations |
 | [`productionization.md`](productionization.md) | real API/GPU/sandbox/identity/storage/operations prerequisites and non-claims |
 
 ## Current branch boundary
 
-Draft PR #7 on `feat/rsi-convergence` supports:
+Draft PR #11 on `feat/coevolution-convergence` supports deterministic local reference commands:
 
 ```text
 demo
 rsi
+coevolve
 verify
 audit
 approvals
 review
 ```
 
-It does not yet support `coevolve`, and it is not merged to `main`.
+Support here means reachable on the Draft branch and covered by deterministic no-network/no-GPU evidence. It does not claim real Teacher API inference, gradient training, production serving, production benchmark validity, enterprise identity, distributed transactions, autonomous Git mutation, or Git Town.
 
-Validated code head before the latest documentation commits:
-
-```text
-ac334be8411f45196d2522c885ff893cb2d44fda
-```
-
-The repair-and-validation workflow for that code head passed compile, Ruff, mypy, full pytest with coverage, compatibility demo, converged RSI, and Checkpoint audit smoke. The exact current documentation head still requires its own normal PR check set before PR #7 can leave Draft.
+Exact component and convergence records are indexed under [`validation/`](validation/INDEX.md). A `PENDING` record must never be presented as a passing gate.
 
 ## Structural documentation update set
 
@@ -86,13 +89,15 @@ A change to a State, Event, StopReason, Decision, Evidence kind, schema field, t
 
 ```text
 ../README.md
+architecture-manifest.json
 implementation-status.md
 state-machine.md
-rsi-convergence.md          # supported runtime changes
+rsi-convergence.md or coevolution-convergence.md
 relevant component document
 traceability-index.md
-stacked-pr-plan.md           # branch/merge changes
-closest scoped AGENTS.md     # ownership changes
+stacked-pr-plan.md
+closest scoped AGENTS.md
+validation index / exact-head record when verification changes
 ```
 
 Documentation must identify the exact branch and commit that supports a claim. Target diagrams must be labeled target, not current.
