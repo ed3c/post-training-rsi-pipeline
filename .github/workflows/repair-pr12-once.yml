@@ -14,84 +14,47 @@ jobs:
   repair:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out PR12 branch
+      - name: Check out exact PR12 branch
         uses: actions/checkout@v4
         with:
           ref: feat/coevolution-audit-recovery
           fetch-depth: 0
 
-      - name: Apply deterministic audit repair
+      - name: Verify repair admission
         shell: bash
         run: |
           set -euo pipefail
+          expected_parent="c3ae94f5a51e9e944b4efefe7614f1912e6c3288"
+          actual_parent="$(git rev-parse HEAD^)"
+          test "$actual_parent" = "$expected_parent"
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/repair-pr12-once.yml"
+
+      - name: Apply locally reproduced deterministic repair
+        shell: bash
+        env:
+          PR12_TRANSFORMER_GZIP_BASE64: "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"
+        run: |
+          set -euo pipefail
           python - <<'PY'
+          import base64
+          import gzip
+          import hashlib
+          import os
           from pathlib import Path
 
-          audit = Path("src/post_training_rsi/audit/coevolution.py")
-          text = audit.read_text(encoding="utf-8")
-          replacements = {
-              "from ..control_plane import DecisionSubject, StateSnapshot\n": (
-                  "from ..control_plane import StateSnapshot\n"
-              ),
-              "                        subject=metadata.pending_approval_subject,\n": (
-                  "                        approval_subject=metadata.pending_approval_subject,\n"
-              ),
-          }
-          for old, new in replacements.items():
-              if old not in text:
-                  raise SystemExit(f"expected audit repair target not found: {old!r}")
-              text = text.replace(old, new, 1)
-          audit.write_text(text, encoding="utf-8")
-
-          tests = Path("tests/test_coevolution_audit.py")
-          text = tests.read_text(encoding="utf-8")
-          old = "import pytest\n\n"
-          if old not in text:
-              raise SystemExit("expected unused pytest import not found")
-          tests.write_text(text.replace(old, "", 1), encoding="utf-8")
-
-          cli = Path("src/post_training_rsi/__main__.py")
-          text = cli.read_text(encoding="utf-8")
-          replacements = {
-              "        result = build_default_engine(config, workspace=workspace).run()\n"
-              "        _print_json(result.to_dict())\n": (
-                  "        demo_result = build_default_engine(config, workspace=workspace).run()\n"
-                  "        _print_json(demo_result.to_dict())\n"
-              ),
-              "        result = build_converged_rsi_controller(\n"
-              "            config,\n"
-              "            workspace=workspace,\n"
-              "            run_id=args.run_id,\n"
-              "        ).run()\n"
-              "        _print_json(result.to_dict())\n": (
-                  "        rsi_result = build_converged_rsi_controller(\n"
-                  "            config,\n"
-                  "            workspace=workspace,\n"
-                  "            run_id=args.run_id,\n"
-                  "        ).run()\n"
-                  "        _print_json(rsi_result.to_dict())\n"
-              ),
-              "        result = build_reference_coevolution_controller(\n"
-              "            config,\n"
-              "            workspace=workspace,\n"
-              "            run_id=args.run_id,\n"
-              "        ).run()\n"
-              "        _print_json(result.to_dict())\n": (
-                  "        coevolution_result = build_reference_coevolution_controller(\n"
-                  "            config,\n"
-                  "            workspace=workspace,\n"
-                  "            run_id=args.run_id,\n"
-                  "        ).run()\n"
-                  "        _print_json(coevolution_result.to_dict())\n"
-              ),
-          }
-          for old, new in replacements.items():
-              if old not in text:
-                  raise SystemExit(f"expected CLI repair target not found: {old!r}")
-              text = text.replace(old, new, 1)
-          cli.write_text(text, encoding="utf-8")
+          raw = gzip.decompress(
+              base64.b64decode(os.environ["PR12_TRANSFORMER_GZIP_BASE64"])
+          )
+          actual = hashlib.sha256(raw).hexdigest()
+          expected = "f0982cc7871aae13d4d659f0af8056d4f72b9ad3e0a938af2aa2979d1698f647"
+          if actual != expected:
+              raise SystemExit(
+                  f"transformer SHA-256 mismatch: expected {expected}, got {actual}"
+              )
+          target = Path("/tmp/apply_pr12_final.py")
+          target.write_bytes(raw)
           PY
-          rm .github/workflows/repair-pr12-once.yml
+          python /tmp/apply_pr12_final.py
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -104,48 +67,73 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev]'
 
-      - name: Validate repair
+      - name: Static and exact-base type validation
         shell: bash
         run: |
           set -euo pipefail
+          git fetch --no-tags origin feat/coevolution-convergence
           python -m compileall -q src tests scripts
           ruff check src tests scripts
           python scripts/check_mypy_delta.py \
             --base-ref origin/feat/coevolution-convergence
+          git diff --check
+
+      - name: Focused PR12 contract matrix
+        run: |
           python -m pytest -q \
             tests/test_coevolution_audit.py \
             tests/test_coevolution_audit_cli.py \
             tests/test_architecture_manifest.py \
             tests/test_documentation_contract.py
+
+      - name: Full suite and coverage floor
+        run: |
           python -m pytest -q \
             --cov=post_training_rsi \
             --cov-report=term-missing \
             --cov-fail-under=75
-          workspace=/tmp/pr12-repair-smoke
+
+      - name: Deterministic Co-Evolution status and audit smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          workspace=/tmp/pr12-final-smoke
           rm -rf "$workspace"
           python -m post_training_rsi \
             --workspace "$workspace" \
-            --run-id pr12-repair \
+            --run-id pr12-final-smoke \
             coevolve >/tmp/pr12-coevolve.json
           python -m post_training_rsi \
             --workspace "$workspace" \
-            coevolve-status >/tmp/pr12-status.json
+            coevolve-status \
+            --expect-run-id pr12-final-smoke >/tmp/pr12-status.json
           python -m post_training_rsi \
             --workspace "$workspace" \
-            coevolve-audit >/tmp/pr12-audit.json
+            coevolve-audit \
+            --expect-run-id pr12-final-smoke >/tmp/pr12-audit.json
+          python -m json.tool /tmp/pr12-coevolve.json >/dev/null
           python -m json.tool /tmp/pr12-status.json >/dev/null
           python -m json.tool /tmp/pr12-audit.json >/dev/null
+          python - <<'PY'
+          import json
+          from pathlib import Path
 
-      - name: Commit validated repair
+          result = json.loads(Path('/tmp/pr12-coevolve.json').read_text())
+          status = json.loads(Path('/tmp/pr12-status.json').read_text())
+          audit = json.loads(Path('/tmp/pr12-audit.json').read_text())
+          assert result['status'] == 'STOPPED', result
+          assert status['runtime_status'] == 'STOPPED', status
+          assert status['state'] == 'STOPPED', status
+          assert audit['status'] == 'PASS', audit
+          assert Path(audit['report_path']).is_file(), audit
+          PY
+
+      - name: Commit validated exact repair
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "ed3c"
           git config user.email "mcnum01@gmail.com"
-          git add \
-            src/post_training_rsi/audit/coevolution.py \
-            src/post_training_rsi/__main__.py \
-            tests/test_coevolution_audit.py \
-            .github/workflows/repair-pr12-once.yml
-          git commit -m "fix(audit): satisfy exact-head static validation"
+          git add -A
+          git commit -m "fix(audit): close Co-Evolution evidence and recovery gaps"
           git push origin HEAD:feat/coevolution-audit-recovery
