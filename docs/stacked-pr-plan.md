@@ -428,3 +428,46 @@ stale-lock recovery
 retention and disaster recovery
 production threshold acceptance
 ```
+
+## PR #12 — Co-Evolution audit and recovery boundary
+
+```yaml
+branch: feat/coevolution-audit-recovery
+parent: PR #11 / feat/coevolution-convergence
+status: Draft
+purpose: expose read-only Co-Evolution status and integrity audit, plus a human recovery playbook
+owner_paths:
+  - src/post_training_rsi/audit/**
+  - tests/test_coevolution_audit*.py
+  - docs/coevolution-audit-recovery.md
+  - docs/architecture-manifest.json
+  - .github/workflows/coevolution-audit.yml
+must_not:
+  - mutate Run, Peak, Harness, approval, or quarantine pointers
+  - delete orphan records or retained locks
+  - retry providers or resume execution
+  - claim production recovery
+required_evals:
+  - compileall and Ruff
+  - exact-base mypy delta
+  - focused audit/CLI/documentation matrix
+  - full pytest coverage floor
+  - deterministic coevolve/status/audit smoke
+rollback_subject: PR #12 audit package, CLI registration, documentation, and workflow
+```
+
+Git Town remains not configured; PR #12 is an ordinary GitHub child of PR #11.
+
+<!-- PR13_FORENSIC_RECOVERY_INDEX_START -->
+## PR-13 recovery successor
+
+```text
+PR #11  Co-Evolution convergence
+└── PR #12  read-only audit/recovery boundary
+    └── PR #13  forensic bundle and inactive staged restore
+```
+
+PR #13 owns `src/post_training_rsi/recovery_bundle/**`, focused tests/workflows, and its component documentation. It must not change live model/Harness/Peak pointers. A future activation PR requires explicit human authority, expected-generation compare-and-swap, strict audit PASS, rollback pointer, and post-switch audit.
+
+Git Town remains disabled until the repository commits the exact version, configuration, verified parent graph, worktree leases, non-interactive rehearsal, no-push evidence, and active `stack.tsv`.
+<!-- PR13_FORENSIC_RECOVERY_INDEX_END -->

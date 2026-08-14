@@ -10,6 +10,55 @@ This repository turns the source architecture into executable components, typed 
 
 Read [`AGENTS.md`](AGENTS.md) before changing code. The document index is in [`docs/README.md`](docs/README.md), and the machine-readable directory → State Machine → evidence → PR index is [`docs/architecture-manifest.json`](docs/architecture-manifest.json).
 
+## PR #12 current branch overlay
+
+Current branch: `feat/coevolution-audit-recovery`
+Current Draft PR: [#12](https://github.com/ed3c/post-training-rsi-pipeline/pull/12)
+
+The machine-readable source of current directory, State Machine, artifact, command, and PR ownership is [`docs/architecture-manifest.json`](docs/architecture-manifest.json). Where an older PR #7 paragraph below describes Co-Evolution as planned, this PR #12 overlay is the current branch truth.
+
+Supported deterministic local commands on this branch:
+
+```text
+`demo`
+`rsi`
+`verify`
+`audit`
+`approvals`
+`review`
+`coevolve`
+`coevolve-status`
+`coevolve-audit`
+```
+
+Co-Evolution composition and audit ownership:
+
+```text
+src/post_training_rsi/orchestration/coevolution.py
+  FREEZE_MODEL → MUTATE_HARNESS → HARVEST_TRACES
+  → TRAIN_MODEL → PROMOTE_MODEL / ROLLBACK_MODEL
+  → SLIM_HARNESS → next cycle or STOPPED
+
+src/post_training_rsi/audit/
+  durable Run/transaction/pointer/artifact graph
+  → read-only status
+  → PASS / WARN / FAIL integrity report
+  → no automatic repair or pointer mutation
+```
+
+Ordinary GitHub successor chain:
+
+```text
+PR #7  Durable recursive RSI
+└── PR #8   Harness outer loop
+    └── PR #9   Observable Trace harvesting
+        └── PR #10  Model inner loop
+            └── PR #11  Co-Evolution convergence
+                └── PR #12  Read-only audit and recovery boundary
+```
+
+Git Town is not configured. The graph is documentation, not executable Git Town metadata.
+
 ## Current integration truth
 
 Current integration branch: `feat/coevolution-convergence`  
@@ -234,7 +283,10 @@ post-training-rsi-pipeline/
 │   ├── cost.py                            stage cost and circuit accounting
 │   ├── models.py                          legacy/current portable payloads
 │   ├── engine.py                          one-pass compatibility `demo`
-│   └── harness/                           outer/middle/inner Co-Evolution components and durable persistence
+│   ├── harness/                           outer/middle/inner Co-Evolution components and durable persistence
+│   ├── audit/                             read-only Co-Evolution evidence-graph verification
+│   ├── preflight/                         fail-closed provider admission before anything leaves the process
+│   └── recovery_bundle/                   content-addressed forensic bundles and staged-only restore
 ├── tests/                                 deterministic, no-network/no-GPU evidence
 └── .github/workflows/ci.yml               compile, lint, type, tests, CLI smoke
 ```
@@ -257,6 +309,10 @@ post-training-rsi-pipeline/
 | `lineage/` | immutable persistence | control records and artifacts | transactions, bundles, pointers, markers | deciding whether score is good |
 | `cost.py` | budget facts | stage charges | ledger/circuit evidence | quality policy |
 | `harness/` | future non-parametric search | failures/tasks/Harness | snapshots/traces | model weight updates |
+| `orchestration/coevolution.py` | Co-Evolution sequencing | frozen model, active Harness, durable state | cycle transactions, pointer history, terminal reason | provider execution or reviewer authority |
+| `audit/` | read-only evidence verification | durable Run/transaction/pointer graph | PASS/WARN/FAIL report | any repair, pointer mutation, or activation |
+| `preflight/` | provider admission | config, env var names, authorization receipt | admission report | network, subprocess, GPU, or endpoint calls |
+| `recovery_bundle/` | forensic capture and staged restore | source workspace or verified bundle | content-addressed bundle, staged directory | activating a restore or switching a live pointer |
 | `tests/` | deterministic proof | fixtures | assertions and coverage | network/API/GPU dependency |
 
 ## 4. Runtime data and evidence flow
@@ -408,3 +464,28 @@ No claim is made that PR #7 has validated:
 - complete Model/Harness Co-Evolution.
 
 These are explicit successor requirements, not hidden implementation details.
+
+<!-- PR13_FORENSIC_RECOVERY_INDEX_START -->
+## Forensic recovery successor — Draft PR #13
+
+The read-only Co-Evolution audit boundary is followed by a content-addressed, local-only recovery slice:
+
+```text
+PR #12  read-only Co-Evolution audit and recovery diagnosis
+└── PR #13  deterministic forensic bundle + inactive staged restore
+```
+
+PR #13 owns only:
+
+```text
+local workspace scan
+  → content-addressed blobs
+  → canonical recovery manifest
+  → exact bundle verification
+  → reconstruction into a new directory
+  → exact staged-copy verification
+  → STAGED_INACTIVE
+```
+
+It has no `ACTIVATE` transition and never overwrites the live workspace. See [`docs/forensic-recovery-bundle.md`](docs/forensic-recovery-bundle.md) and the machine-readable [`docs/forensic-recovery-manifest.json`](docs/forensic-recovery-manifest.json).
+<!-- PR13_FORENSIC_RECOVERY_INDEX_END -->

@@ -496,6 +496,9 @@ class TraceHarvestPolicy:
             },
         )
         snapshot_metadata = dict(metadata)
+        for key in ("active_model_score", "active_harness_score"):
+            if key not in snapshot_metadata and key in current.metadata:
+                snapshot_metadata[key] = current.metadata[key]
         snapshot_metadata["decision_id"] = decision_id
         snapshot = StateSnapshot(
             snapshot_id=snapshot_id,

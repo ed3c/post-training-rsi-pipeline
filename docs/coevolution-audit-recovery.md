@@ -356,3 +356,20 @@ A local `PASS` proves only internal consistency of the inspected local evidence 
 - DVC/lakeFS/MLflow integration;
 - Git Town configuration;
 - production readiness.
+
+<!-- PR13_FORENSIC_RECOVERY_INDEX_START -->
+## Successor: deterministic bundle and inactive stage
+
+PR #13 implements the byte-preservation portion of this playbook:
+
+```text
+strict audit diagnosis
+  → human selects a consistent workspace generation
+  → create content-addressed recovery bundle
+  → verify bundle
+  → stage into a new inactive directory
+  → verify staged copy
+```
+
+It does not select the generation automatically and cannot activate the staged copy. Continue to require a strict staged audit and separate human-authorized compare-and-swap before any production pointer change. See [`forensic-recovery-bundle.md`](forensic-recovery-bundle.md).
+<!-- PR13_FORENSIC_RECOVERY_INDEX_END -->

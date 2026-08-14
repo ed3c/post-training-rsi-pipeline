@@ -160,3 +160,18 @@ PR owner
 ```
 
 Do not mark a row Supported until a supported path reaches the capability and the exact head has deterministic evidence.
+
+<!-- PR13_FORENSIC_RECOVERY_INDEX_START -->
+## Recovery bundle traceability
+
+| Requirement ID | Requirement | Code | Test / evidence | Status |
+|---|---|---|---|---|
+| `REC-BUNDLE-01` | deterministic content-addressed local export | `recovery_bundle/bundle.py:create_bundle` | `test_bundle_is_deterministic_and_deduplicates_blobs` | Implemented component |
+| `REC-BUNDLE-02` | canonical manifest and exact blob verification | `verify_bundle`, `load_manifest` | blob/manifest tamper tests | Implemented component |
+| `REC-BUNDLE-03` | reject path traversal, symlink, special file, and nested output | path/source guards | focused negative matrix | Implemented component |
+| `REC-BUNDLE-04` | restore only into a new inactive directory | `stage_bundle` | round-trip and existing-destination tests | Implemented component |
+| `REC-BUNDLE-05` | verify staged path set and bytes | `verify_staged_directory` | staged mutation test | Implemented component |
+| `REC-BUNDLE-06` | no automatic activation | no `ACTIVATE` edge or command | `test_forensic_recovery_state_machine_has_no_activation_edge` | Verified by contract test |
+| `REC-BUNDLE-07` | retained writer locks fail closed | create/stage lock files | retained-lock test | Implemented component |
+| `REC-BUNDLE-08` | machine-readable ownership and non-claims | `forensic-recovery-manifest.json` | `test_forensic_recovery_manifest.py` | Implemented component |
+<!-- PR13_FORENSIC_RECOVERY_INDEX_END -->

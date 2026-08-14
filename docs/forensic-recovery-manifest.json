@@ -1,0 +1,99 @@
+{
+  "artifacts": {
+    "blob_directory": "blobs",
+    "manifest": "manifest.json",
+    "schema_version": "post-training-rsi.recovery-bundle/v1",
+    "validation_json": "docs/validation/forensic-recovery-bundle-latest.json",
+    "validation_markdown": "docs/validation/forensic-recovery-bundle-latest.md"
+  },
+  "branch": "feat/forensic-recovery-bundle",
+  "commands": [
+    "create",
+    "verify",
+    "stage",
+    "verify-stage"
+  ],
+  "dependencies": [
+    {
+      "branch": "feat/coevolution-audit-recovery",
+      "pr": 12,
+      "role": "read-only semantic and integrity audit"
+    }
+  ],
+  "evidence_boundary": "Content-addressed local bytes and inactive staged reconstruction only; no live activation or production recovery authority.",
+  "git_town": {
+    "enabled": false,
+    "reason": "No exact version pin, repository configuration, rehearsed parent graph, worktree lease evidence, no-push proof, or active stack.tsv is committed."
+  },
+  "human_owned_operations": [
+    "retained-lock investigation",
+    "backup destination authorization",
+    "encryption key management",
+    "retention and legal hold",
+    "strict audit of the staged copy",
+    "production pointer activation",
+    "rollback and writer resume"
+  ],
+  "invariants": [
+    "bundle output is outside the source workspace",
+    "manifest is committed after all blobs",
+    "bundle_id equals SHA-256 of the canonical identity payload",
+    "manifest paths are canonical relative POSIX paths",
+    "symbolic links and special files fail closed",
+    "all file hashes are recomputed by the controller",
+    "stage destination is absent before the operation",
+    "staged bytes exactly match the manifest",
+    "successful staging reports activated=false"
+  ],
+  "owned_paths": [
+    ".github/workflows/recovery-bundle.yml",
+    ".github/workflows/forensic-recovery-repair.yml",
+    "src/post_training_rsi/recovery_bundle",
+    "tests/test_recovery_bundle.py",
+    "tests/test_recovery_bundle_cli.py",
+    "tests/test_forensic_recovery_manifest.py",
+    "docs/forensic-recovery-bundle.md",
+    "docs/forensic-recovery-manifest.json"
+  ],
+  "parent_branch": "feat/coevolution-audit-recovery",
+  "parent_pr": 12,
+  "pr": 13,
+  "record_type": "forensic_recovery_slice",
+  "rollback_subject": "Remove the recovery_bundle package, focused workflows/tests, component documentation, and this manifest.",
+  "schema_version": "post-training-rsi.recovery-slice/v1",
+  "state_machine": [
+    {
+      "from": "SOURCE_SELECTED",
+      "to": "SOURCE_SCANNED"
+    },
+    {
+      "from": "SOURCE_SCANNED",
+      "to": "BLOBS_WRITTEN"
+    },
+    {
+      "from": "BLOBS_WRITTEN",
+      "to": "MANIFEST_COMMITTED"
+    },
+    {
+      "from": "MANIFEST_COMMITTED",
+      "to": "BUNDLE_VERIFIED"
+    },
+    {
+      "from": "BUNDLE_VERIFIED",
+      "to": "STAGE_TARGET_RESERVED"
+    },
+    {
+      "from": "STAGE_TARGET_RESERVED",
+      "to": "FILES_RECONSTRUCTED"
+    },
+    {
+      "from": "FILES_RECONSTRUCTED",
+      "to": "STAGE_VERIFIED"
+    },
+    {
+      "from": "STAGE_VERIFIED",
+      "to": "STAGED_INACTIVE"
+    }
+  ],
+  "status": "DRAFT_IMPLEMENTED_COMPONENT"
+}
