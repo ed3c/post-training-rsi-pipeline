@@ -4,3 +4,8 @@ __pycache__/
 .coverage
 .pytest_cache/
 artifacts/
+
+# Harness-local scratch. Scoped rather than ignoring all of .claude/, so a
+# settings.json or CLAUDE.md added later is still visible to git.
+.claude/worktrees/
+.claude/.cc-writes/
