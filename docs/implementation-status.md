@@ -181,3 +181,41 @@ Draft PR: PR #12
 Supported deterministic local commands: `demo`, `rsi`, `verify`, `audit`, `approvals`, `review`, `coevolve`, `coevolve-status`, `coevolve-audit`.
 
 `coevolve-status` is read-only. `coevolve-audit` verifies the durable Co-Evolution Run, control transactions, Peak Checkpoint, active Harness, Trace Dataset, approval, quarantine, artifact, and lock graph. It writes only `reports/coevolution-audit.json` when the workspace already exists. Missing workspaces, mismatched identities, malformed records, and failed integrity checks return exit code 2. Automatic recovery remains unsupported and human-owned.
+
+<!-- PR13_FORENSIC_RECOVERY_INDEX_START -->
+## PR-13 forensic recovery bundle
+
+Status: **Draft implemented component; not production activation**
+
+```text
+Branch: feat/forensic-recovery-bundle
+Parent: feat/coevolution-audit-recovery / PR #12
+Schema: post-training-rsi.recovery-bundle/v1
+CLI: python -m post_training_rsi.recovery_bundle
+```
+
+Implemented:
+
+```text
+create
+verify
+stage into an absent directory
+verify-stage
+content-addressed deduplication
+manifest/blob/hash/path/symlink checks
+retained create/stage locks
+activated=false terminal result
+```
+
+Not implemented:
+
+```text
+remote backup
+encryption/key management
+retention/legal hold
+distributed writer exclusion
+automatic recovery
+production pointer activation
+RPO/RTO guarantees
+```
+<!-- PR13_FORENSIC_RECOVERY_INDEX_END -->

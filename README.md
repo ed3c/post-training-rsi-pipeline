@@ -445,3 +445,28 @@ No claim is made that PR #7 has validated:
 - complete Model/Harness Co-Evolution.
 
 These are explicit successor requirements, not hidden implementation details.
+
+<!-- PR13_FORENSIC_RECOVERY_INDEX_START -->
+## Forensic recovery successor — Draft PR #13
+
+The read-only Co-Evolution audit boundary is followed by a content-addressed, local-only recovery slice:
+
+```text
+PR #12  read-only Co-Evolution audit and recovery diagnosis
+└── PR #13  deterministic forensic bundle + inactive staged restore
+```
+
+PR #13 owns only:
+
+```text
+local workspace scan
+  → content-addressed blobs
+  → canonical recovery manifest
+  → exact bundle verification
+  → reconstruction into a new directory
+  → exact staged-copy verification
+  → STAGED_INACTIVE
+```
+
+It has no `ACTIVATE` transition and never overwrites the live workspace. See [`docs/forensic-recovery-bundle.md`](docs/forensic-recovery-bundle.md) and the machine-readable [`docs/forensic-recovery-manifest.json`](docs/forensic-recovery-manifest.json).
+<!-- PR13_FORENSIC_RECOVERY_INDEX_END -->

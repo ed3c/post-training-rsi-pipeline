@@ -457,3 +457,17 @@ rollback_subject: PR #12 audit package, CLI registration, documentation, and wor
 ```
 
 Git Town remains not configured; PR #12 is an ordinary GitHub child of PR #11.
+
+<!-- PR13_FORENSIC_RECOVERY_INDEX_START -->
+## PR-13 recovery successor
+
+```text
+PR #11  Co-Evolution convergence
+└── PR #12  read-only audit/recovery boundary
+    └── PR #13  forensic bundle and inactive staged restore
+```
+
+PR #13 owns `src/post_training_rsi/recovery_bundle/**`, focused tests/workflows, and its component documentation. It must not change live model/Harness/Peak pointers. A future activation PR requires explicit human authority, expected-generation compare-and-swap, strict audit PASS, rollback pointer, and post-switch audit.
+
+Git Town remains disabled until the repository commits the exact version, configuration, verified parent graph, worktree leases, non-interactive rehearsal, no-push evidence, and active `stack.tsv`.
+<!-- PR13_FORENSIC_RECOVERY_INDEX_END -->

@@ -318,3 +318,18 @@ Agents must not autonomously perform:
 Use exact repository paths, State names, schema versions, artifact names, PR numbers, and commit SHAs. Separate current supported behavior from implemented components and target behavior.
 
 Prefer diagrams that expose guards, evidence, and terminal reasons. Avoid diagrams that imply a happy path without failure, approval, rollback, budget, or teardown edges.
+
+<!-- PR13_FORENSIC_RECOVERY_INDEX_START -->
+## Forensic recovery bundle successor
+
+For work under `src/post_training_rsi/recovery_bundle/`, read:
+
+```text
+src/post_training_rsi/recovery_bundle/AGENTS.md
+  → docs/coevolution-audit-recovery.md
+  → docs/forensic-recovery-bundle.md
+  → docs/forensic-recovery-manifest.json
+```
+
+A verified bundle or staged directory is not activation authority. Retained recovery lock removal, storage destination authorization, encryption, retention, strict staged audit, production pointer switching, rollback, and writer resume remain human-owned operations.
+<!-- PR13_FORENSIC_RECOVERY_INDEX_END -->

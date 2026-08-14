@@ -105,3 +105,14 @@ Documentation must identify the exact branch and commit that supports a claim. T
 - [`coevolution-audit-recovery.md`](coevolution-audit-recovery.md) — read-only `coevolve-status` and `coevolve-audit`, strict exit semantics, and human recovery playbook.
 
 Current branch commands include `demo`, `rsi`, `verify`, `audit`, `approvals`, `review`, `coevolve`, `coevolve-status`, and `coevolve-audit`.
+
+<!-- PR13_FORENSIC_RECOVERY_INDEX_START -->
+## Forensic recovery successor
+
+| Document | Purpose |
+|---|---|
+| [`forensic-recovery-bundle.md`](forensic-recovery-bundle.md) | content-addressed local export, exact verification, and inactive staged restore |
+| [`forensic-recovery-manifest.json`](forensic-recovery-manifest.json) | machine-readable PR-13 identity, State Machine, paths, invariants, and human-owned boundary |
+
+PR #13 follows the read-only audit boundary. It implements no automatic repair or production activation.
+<!-- PR13_FORENSIC_RECOVERY_INDEX_END -->

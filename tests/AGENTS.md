@@ -208,3 +208,9 @@ Then smoke the supported CLI paths affected by the change. Record exact commit a
 - No snapshot update that hides a semantic change.
 - No marking a target State reachable solely because it exists in an enum.
 - No lowering coverage or deleting negative tests without an explicit reviewed rationale.
+
+<!-- PR13_FORENSIC_RECOVERY_INDEX_START -->
+## Forensic recovery tests
+
+Recovery tests must use temporary local directories and cover deterministic identity, deduplication, exact fields, path containment, symlinks, special files, tamper, retained locks, new-destination-only staging, exact staged bytes, structured exit codes, and absence of activation. They must not require private production data, network access, API keys, cloud storage, GPU, or mutable production services.
+<!-- PR13_FORENSIC_RECOVERY_INDEX_END -->
