@@ -1,0 +1,117 @@
+name: PR11 Committed Evidence Source Repair
+
+on:
+  push:
+    branches:
+      - feat/coevolution-convergence
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/coevolution-convergence
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Use committed upstream Evidence IDs in reference providers
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f"{path}: expected one replacement, found {count}: {old[:80]!r}"
+                  )
+              target.write_text(text.replace(old, new), encoding="utf-8")
+
+          replace_once(
+              "src/post_training_rsi/orchestration/coevolution.py",
+              (
+                  "        policy_candidate = replace(\n"
+                  "            execution.bundle.candidate,\n"
+                  "            evidence_ids=tuple(\n"
+                  "                evidence.evidence_id for evidence in training_evidence\n"
+                  "            ),\n"
+                  "        )\n"
+                  "        trained_step = policy.training_completed(\n"
+                  "            policy_input,\n"
+                  "            policy_candidate,\n"
+                  "        )\n"
+              ),
+              (
+                  "        trained_step = policy.training_completed(\n"
+                  "            policy_input,\n"
+                  "            execution.bundle.candidate,\n"
+                  "        )\n"
+              ),
+          )
+          replace_once(
+              "src/post_training_rsi/orchestration/coevolution.py",
+              (
+                  "        policy_evaluation = replace(\n"
+                  "            execution.bundle.evaluation,\n"
+                  "            evidence_ids=tuple(\n"
+                  "                evidence.evidence_id for evidence in evaluation_evidence\n"
+                  "            ),\n"
+                  "        )\n"
+                  "        evaluated_step = policy.evaluation_completed(\n"
+                  "            trained_step.final_snapshot,\n"
+                  "            policy_evaluation,\n"
+                  "        )\n"
+              ),
+              (
+                  "        evaluated_step = policy.evaluation_completed(\n"
+                  "            trained_step.final_snapshot,\n"
+                  "            execution.bundle.evaluation,\n"
+                  "        )\n"
+              ),
+          )
+
+          reference = Path("src/post_training_rsi/harness/reference_runtime.py")
+          text = reference.read_text(encoding="utf-8")
+          replacements = [
+              (
+                  '            evidence_ids=(f"ev-reference-training-c{request.cycle:02d}",),',
+                  "            evidence_ids=request.evidence_ids,",
+              ),
+              (
+                  '            evidence_ids=(f"ev-reference-serving-c{candidate.cycle:02d}",),',
+                  "            evidence_ids=candidate.evidence_ids,",
+              ),
+              (
+                  '            evidence_ids=(f"ev-reference-evaluation-c{candidate.cycle:02d}",),',
+                  "            evidence_ids=candidate.evidence_ids,",
+              ),
+              (
+                  '            evidence_ids=(f"ev-reference-teardown-c{lease.checkpoint_id[-4:]}",),',
+                  "            evidence_ids=lease.evidence_ids,",
+              ),
+          ]
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f"reference_runtime.py: expected one replacement, found {count}: {old!r}"
+                  )
+              text = text.replace(old, new)
+          reference.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Commit repair
+        run: |
+          git config user.name 'ed3c'
+          git config user.email 'mcnum01@gmail.com'
+          git add \
+            src/post_training_rsi/orchestration/coevolution.py \
+            src/post_training_rsi/harness/reference_runtime.py
+          git commit -m 'fix(pr11): bind reference providers to committed upstream evidence'
+          git push origin HEAD:feat/coevolution-convergence
