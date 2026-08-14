@@ -1414,6 +1414,34 @@ class CoEvolutionController:
         # its dependent Decision/Transition/Snapshot in the producer
         # iteration. The following outer-cycle start creates iteration-0
         # records separately, after this transaction is committed.
+        rollback_decision_id = _record_id(
+            "decision-model-rollback-committed",
+            self.run_id,
+            current.iteration,
+            decision.subject_id,
+        )
+        rollback_decision = replace(
+            rollback_step.decisions[0],
+            decision_id=rollback_decision_id,
+            iteration=current.iteration,
+        )
+        rollback_transition = replace(
+            rollback_step.transitions[0],
+            transition_id=_record_id(
+                "transition-model-rollback-committed",
+                self.run_id,
+                current.iteration,
+                decision.subject_id,
+            ),
+            iteration=current.iteration,
+            decision_id=rollback_decision_id,
+            idempotency_key=_record_id(
+                "idempotency-model-rollback-committed",
+                self.run_id,
+                current.iteration,
+                decision.subject_id,
+            ),
+        )
         rollback_snapshot = replace(
             rollback_step.final_snapshot,
             snapshot_id=_record_id(
@@ -1423,9 +1451,15 @@ class CoEvolutionController:
                 decision.subject_id,
             ),
             iteration=current.iteration,
+            metadata={
+                **dict(rollback_step.final_snapshot.metadata),
+                "decision_id": rollback_decision_id,
+            },
         )
         rollback_step = replace(
             rollback_step,
+            decisions=(rollback_decision,),
+            transitions=(rollback_transition,),
             snapshots=(rollback_snapshot,),
         )
         committed = self._commit_step(
@@ -2248,6 +2282,22 @@ class CoEvolutionController:
     ) -> Any:
         from ..harness.model_inner_loop import ModelCandidateArtifact
 
+        raw_evidence_ids = snapshot.metadata.get(
+            "candidate_evidence_ids"
+        )
+        if not isinstance(raw_evidence_ids, list) or not all(
+            isinstance(item, str) for item in raw_evidence_ids
+        ):
+            raise RuntimeError(
+                "Candidate Snapshot is missing exact evidence IDs"
+            )
+        raw_candidate_metadata = snapshot.metadata.get(
+            "candidate_metadata"
+        )
+        if not isinstance(raw_candidate_metadata, dict):
+            raise RuntimeError(
+                "Candidate Snapshot is missing exact Candidate metadata"
+            )
         return ModelCandidateArtifact(
             checkpoint_id=snapshot.candidate_checkpoint_id or "",
             request_id=_metadata_str(snapshot, "training_request_id"),
@@ -2263,11 +2313,9 @@ class CoEvolutionController:
             training_cost_usd=float(
                 snapshot.metadata.get("training_cost_usd", 0.0)
             ),
-            trained_at=snapshot.entered_at,
-            evidence_ids=snapshot.evidence_ids,
-            metadata={
-                "expected_reference_score": snapshot.candidate_score or 0.0,
-            },
+            trained_at=_metadata_str(snapshot, "candidate_trained_at"),
+            evidence_ids=tuple(raw_evidence_ids),
+            metadata=dict(raw_candidate_metadata),
         )
 
     def _outer_policy(self) -> HarnessOuterPolicy:
