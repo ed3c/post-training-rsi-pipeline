@@ -12,10 +12,11 @@ Read these sources in order before editing:
 4. `docs/implementation-status.md` — exact implementation snapshot and known gaps.
 5. `docs/state-machine.md` — transition contracts and evidence emitted by each state.
 6. `docs/control-plane-contracts.md` — versioned state/event/decision/evidence schema.
-7. `docs/traceability-index.md` — requirement → code → test → evidence → planned PR mapping.
-8. `docs/stacked-pr-plan.md` — review/merge decomposition and Git Town admission status.
-9. The nearest path-scoped `AGENTS.md`, if one is added later.
-10. The issue/task packet and the current branch/PR graph.
+7. `docs/rsi-loop-policy.md` — strict Peak/reject/rollback/stop decision boundary.
+8. `docs/traceability-index.md` — requirement → code → test → evidence → planned PR mapping.
+9. `docs/stacked-pr-plan.md` — review/merge decomposition and Git Town admission status.
+10. The nearest path-scoped `AGENTS.md`, if one is added later.
+11. The issue/task packet and the current branch/PR graph.
 
 Do not infer completion from architecture diagrams. Executable code and tests outrank prose.
 
@@ -26,7 +27,7 @@ When sources disagree, use this order:
 1. checked-in executable code and deterministic tests;
 2. current branch configuration and CI workflow;
 3. `docs/implementation-status.md`;
-4. `docs/state-machine.md`, `docs/control-plane-contracts.md`, and `docs/traceability-index.md`;
+4. `docs/state-machine.md`, `docs/control-plane-contracts.md`, `docs/rsi-loop-policy.md`, and `docs/traceability-index.md`;
 5. target architecture in `docs/architecture.md`;
 6. the source PDF and external design notes.
 
@@ -34,32 +35,37 @@ The source PDF defines the intended architecture. It does not prove that a featu
 
 ## 3. Current repository truth
 
-At the documentation baseline, `feat/pdf-architecture` is package version `0.2.0`. Its latest verified CI run is green, but the runnable CLI exposes only `demo`, and `RSIEngine.run()` executes one deterministic iteration. Peak comparison, multi-iteration plateau handling, full lineage persistence, `audit`, `coevolve`, Harness mutation, trajectory harvesting, HITL approval, and production adapter selection are not yet wired end to end.
+At the documentation baseline, `feat/pdf-architecture` is package version `0.2.0`. Its latest verified CI run is green, but the runnable CLI exposes only `demo`, and `RSIEngine.run()` executes one deterministic iteration. Full lineage persistence, `audit`, `coevolve`, Harness mutation, trajectory harvesting, HITL approval, and production adapter selection are not yet wired end to end.
 
 `feat/state-domain-contracts` adds the versioned `post-training-rsi.control/v1` control-plane schema. The schema and its tests are **Contract only** until a supported controller emits and persists these records.
+
+`feat/rsi-loop-policy` adds a tested pure `RSIDecisionPolicy` for strict Peak comparison, parent invariants, reject/rollback, plateau, maximum-iteration, and budget decisions. It is an **Implemented component**, not a supported runtime path: `RSIEngine` and the CLI do not call it yet.
 
 Any change that alters this statement must update all of:
 
 - `README.md` current-state table;
 - `docs/implementation-status.md`;
 - `docs/control-plane-contracts.md` when the schema changes;
+- `docs/rsi-loop-policy.md` when candidate decision semantics change;
 - `docs/traceability-index.md`;
 - the relevant transition tests.
 
 ## 4. Non-negotiable invariants
 
 1. Never promote a checkpoint merely because it is the latest.
-2. Never train on a record without one explicit verification decision.
-3. Never treat architecture-only or placeholder modules as implemented runtime behavior.
-4. Never execute generated code in the core process; only static checks belong there.
-5. Never exceed budget, retry, recursion, or wall-time limits silently.
-6. Never make a rejected checkpoint the parent of a later candidate.
-7. Never delete lineage required to reproduce a decision.
-8. Never expose credentials, private benchmark content, model weights, or provider tokens.
-9. Never mutate production endpoints, Git history, or cloud infrastructure implicitly.
-10. Human approval gates must fail closed: missing, malformed, mismatched, pending, or denied decisions are not approvals.
-11. Never redefine shared state, event, stop-reason, decision, or evidence semantics outside `control_plane/`.
-12. Never accept unknown fields or silently reinterpret an incompatible control schema version.
+2. Promotion is strict: `candidate_score > peak_score + min_improvement`.
+3. Never train on a record without one explicit verification decision.
+4. Never treat architecture-only, contract-only, placeholder, or unwired components as supported runtime behavior.
+5. Never execute generated code in the core process; only static checks belong there.
+6. Never exceed budget, retry, recursion, or wall-time limits silently.
+7. Never make a rejected checkpoint the parent of a later candidate.
+8. Active accepted checkpoint and historical Peak must not diverge silently.
+9. Never delete lineage required to reproduce a decision.
+10. Never expose credentials, private benchmark content, model weights, or provider tokens.
+11. Never mutate production endpoints, Git history, or cloud infrastructure implicitly.
+12. Human approval gates must fail closed: missing, malformed, mismatched, pending, or denied decisions are not approvals.
+13. Never redefine shared state, event, stop-reason, decision, or evidence semantics outside `control_plane/`.
+14. Never accept unknown fields or silently reinterpret an incompatible control schema version.
 
 ## 5. Directory ownership and state-machine boundaries
 
@@ -67,8 +73,9 @@ Any change that alters this statement must update all of:
 |---|---|---|
 | `src/post_training_rsi/config.py` | validated configuration and thresholds | runtime transition policy |
 | `src/post_training_rsi/control_plane/` | versioned provider-neutral state/event/stop/decision/evidence records | adjacency, score thresholds, provider SDK calls, persistence side effects |
+| `src/post_training_rsi/orchestration/` | pure state adjacency, Peak/reject/rollback/stop policy, later composition | provider SDK internals or artifact-store implementation |
 | `src/post_training_rsi/models.py` | current portable data/result payloads | provider SDK calls or duplicate control taxonomies |
-| `src/post_training_rsi/engine.py` | current orchestration entry point | hidden provider-specific behavior |
+| `src/post_training_rsi/engine.py` | current supported orchestration entry point | hidden provider-specific behavior |
 | `src/post_training_rsi/generation.py` | deterministic synthesis fixture | production Teacher transport |
 | `src/post_training_rsi/synthesis/` | Teacher protocols, prompts, provider-facing synthesis | promotion decisions |
 | `src/post_training_rsi/verification/` | deterministic admission/quarantine decisions | model-quality promotion |
@@ -80,7 +87,7 @@ Any change that alters this statement must update all of:
 | `tests/` | deterministic state/contract evidence | network-, API-key-, or GPU-dependent tests |
 | `docs/` | current status, architecture, operations, traceability | claims unsupported by code/tests |
 
-Provider adapters must implement stable protocols. Controllers depend on protocols and `control_plane/` records, not provider SDKs.
+Provider adapters implement stable protocols. Controllers depend on protocols and `control_plane/` records, not provider SDKs.
 
 ## 6. Required task packet
 
@@ -105,6 +112,7 @@ Run the smallest relevant checks first, then the full local gate:
 
 ```bash
 python -m pytest tests/test_control_plane.py
+python -m pytest tests/test_rsi_policy.py
 make install
 make lint
 make typecheck
@@ -117,10 +125,11 @@ make demo
 For every changed transition or control record:
 
 - use the shared `control_plane/` enums and record types;
-- add a deterministic regression test;
-- assert the transition reason and emitted evidence;
+- add deterministic positive, negative, boundary, and rollback tests;
+- assert the transition event, decision reason, stop reason, and evidence IDs;
 - preserve canonical serialization and strict schema rejection;
-- update `docs/state-machine.md`, `docs/control-plane-contracts.md`, and `docs/traceability-index.md`;
+- preserve parent and active-Peak invariants;
+- update `docs/state-machine.md`, `docs/control-plane-contracts.md`, `docs/rsi-loop-policy.md` as applicable, and `docs/traceability-index.md`;
 - keep tests runnable without network, API keys, GPUs, or mutable external services.
 
 ## 8. Git and PR protocol
@@ -141,8 +150,9 @@ Git Town is **not configured** at this baseline. Do not run `git town` commands 
 Use these labels consistently:
 
 - **Implemented** — reachable from a supported CLI/runtime path and covered by deterministic tests.
+- **Implemented component** — coded and tested within a bounded module, but not composed into the supported runtime.
 - **Contract only** — protocol, record schema, or adapter exists but is not selected/emitted by the supported runtime.
-- **Partial** — some states exist but required transitions/evidence are missing.
+- **Partial** — some reachable states exist but required transitions/evidence are missing.
 - **Planned** — documented target with no reachable implementation.
 - **Verified** — CI or local command evidence is recorded for the exact commit.
 
