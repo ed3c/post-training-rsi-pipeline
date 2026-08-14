@@ -1,0 +1,25 @@
+{
+  "promotion": {
+    "metric": "benchmark_score",
+    "operator": ">",
+    "minimum_delta": 0.001,
+    "action": "promote_peak"
+  },
+  "regression": {
+    "tolerance": 0.0,
+    "action": "quarantine_dataset_and_keep_peak"
+  },
+  "plateau": {
+    "patience": 3,
+    "action": "early_stop"
+  },
+  "cost": {
+    "per_trial_usd": 20.0,
+    "total_run_usd": 30.0,
+    "action": "abort"
+  },
+  "diversity": {
+    "minimum_acceptance_rate": 0.25,
+    "action": "abort_and_quarantine"
+  }
+}

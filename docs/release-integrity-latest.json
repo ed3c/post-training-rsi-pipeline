@@ -1,0 +1,25 @@
+{
+  "schema_version": "post-training-rsi.release-integrity/v1",
+  "repository": "ed3c/post-training-rsi-pipeline",
+  "branch": "feat/coevolution-convergence",
+  "commit": null,
+  "tree": null,
+  "status": "PENDING",
+  "required_gates": [
+    "Python 3.11 compile and Ruff",
+    "Python 3.12 compile and Ruff",
+    "focused Co-Evolution matrix",
+    "full pytest coverage floor",
+    "deterministic coevolve CLI smoke",
+    "architecture-manifest contract"
+  ],
+  "verified_gates": [],
+  "non_claims": [
+    "production readiness",
+    "real API inference",
+    "real GPU or gradient training",
+    "live production serving",
+    "production benchmark validity",
+    "Git Town configuration"
+  ]
+}

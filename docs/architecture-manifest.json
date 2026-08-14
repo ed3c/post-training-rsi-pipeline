@@ -1,0 +1,141 @@
+{
+  "schema_version": "post-training-rsi.architecture-manifest/v1",
+  "repository": "ed3c/post-training-rsi-pipeline",
+  "branch": "feat/coevolution-convergence",
+  "runtime_status": {
+    "supported_local_commands": ["demo", "rsi", "verify", "audit", "approvals", "review", "coevolve", "coevolve-status", "coevolve-audit"],
+    "deterministic_reference_only": true,
+    "production_ready": false,
+    "git_town_configured": false
+  },
+  "read_order": [
+    "AGENTS.md",
+    "README.md",
+    "docs/README.md",
+    "docs/architecture-manifest.json",
+    "docs/architecture.md",
+    "docs/implementation-status.md",
+    "docs/state-machine.md",
+    "docs/rsi-convergence.md",
+    "docs/harness-outer-loop.md",
+    "docs/trace-harvesting.md",
+    "docs/model-inner-loop.md",
+    "docs/coevolution-convergence.md",
+    "docs/traceability-index.md",
+    "docs/stacked-pr-plan.md",
+    "docs/productionization.md",
+    "docs/validation/INDEX.md",
+    "docs/validation/coevolution-evidence-index.md",
+    "docs/validation/NON_CLAIMS.md"
+  ],
+  "state_machines": {
+    "rsi": {
+      "controller": "src/post_training_rsi/orchestration/converged.py",
+      "states": ["BOOT", "DIAGNOSE", "HYPOTHESIS", "SYNTHESIZE", "VERIFY", "QUARANTINED", "DATA_REVIEW_PENDING", "TRAIN", "SERVE", "EVALUATE", "MODEL_REVIEW_PENDING", "PROMOTED", "REJECTED", "ROLLED_BACK", "STOPPED", "ABORTED"]
+    },
+    "coevolution": {
+      "controller": "src/post_training_rsi/orchestration/coevolution.py",
+      "states": ["FREEZE_MODEL", "MUTATE_HARNESS", "VALIDATE_HARNESS", "EVALUATE_HARNESS", "HARNESS_REVIEW_PENDING", "ACCEPT_HARNESS", "REJECT_HARNESS", "HARVEST_TRACES", "VERIFY_TRACES", "DATA_REVIEW_PENDING", "TRAIN_MODEL", "EVALUATE_MODEL", "MODEL_REVIEW_PENDING", "PROMOTE_MODEL", "ROLLBACK_MODEL", "SLIM_HARNESS", "STOPPED", "ABORTED"]
+    }
+  },
+  "directory_ownership": [
+    {
+      "path": "src/post_training_rsi/control_plane/",
+      "owner": "versioned control vocabulary",
+      "states": [],
+      "inputs": ["typed State/Event/Decision/Evidence values"],
+      "outputs": ["canonical JSON records"],
+      "evidence": ["canonical JSON"],
+      "must_not_own": ["adjacency", "provider calls", "persistence"]
+    },
+    {
+      "path": "src/post_training_rsi/orchestration/",
+      "owner": "RSI and Co-Evolution composition",
+      "states": ["BOOT", "DIAGNOSE", "HYPOTHESIS", "SYNTHESIZE", "VERIFY", "TRAIN", "SERVE", "EVALUATE", "FREEZE_MODEL", "HARVEST_TRACES", "TRAIN_MODEL", "SLIM_HARNESS", "STOPPED", "ABORTED"],
+      "inputs": ["validated config", "provider-neutral adapters", "committed evidence"],
+      "outputs": ["Decision/Transition/Snapshot transactions", "resume metadata", "terminal reports"],
+      "evidence": ["DECISION", "LINEAGE_MANIFEST", "reports/*.json"],
+      "must_not_own": ["provider SDK internals", "reviewer authentication"]
+    },
+    {
+      "path": "src/post_training_rsi/harness/outer_loop/",
+      "owner": "frozen-model Harness mutation and selection",
+      "states": ["FREEZE_MODEL", "MUTATE_HARNESS", "VALIDATE_HARNESS", "EVALUATE_HARNESS", "HARNESS_REVIEW_PENDING", "ACCEPT_HARNESS", "REJECT_HARNESS", "HARVEST_TRACES", "ABORTED"],
+      "inputs": ["accepted model", "active Harness", "failure traces", "task suite"],
+      "outputs": ["Harness Candidate", "validation result", "benchmark result", "trace-harvest handoff"],
+      "evidence": ["HARNESS_SNAPSHOT", "FAILURE_TRACE", "DECISION"],
+      "must_not_own": ["model weight updates", "Peak mutation", "Git commit authority"]
+    },
+    {
+      "path": "src/post_training_rsi/harness/trace_harvesting/",
+      "owner": "observable successful-Trace Dataset production",
+      "states": ["HARVEST_TRACES", "VERIFY_TRACES", "QUARANTINED", "TRAIN_MODEL", "STOPPED", "ABORTED"],
+      "inputs": ["frozen accepted model/Harness lineage", "observable task trajectories"],
+      "outputs": ["verified Trace Dataset", "audit", "quarantine", "model-training handoff"],
+      "evidence": ["TRACE_DATASET", "VERIFICATION_AUDIT", "QUARANTINE_DATASET"],
+      "must_not_own": ["hidden chain-of-thought", "model training", "Harness mutation"]
+    },
+    {
+      "path": "src/post_training_rsi/harness/model_inner_loop/",
+      "owner": "Trace-Dataset-bound Candidate model execution and policy",
+      "states": ["TRAIN_MODEL", "EVALUATE_MODEL", "MODEL_REVIEW_PENDING", "PROMOTE_MODEL", "ROLLBACK_MODEL", "SLIM_HARNESS", "FREEZE_MODEL", "ABORTED"],
+      "inputs": ["verified Trace Dataset", "accepted parent Checkpoint", "Trainer/serving/evaluator adapters"],
+      "outputs": ["Candidate artifact", "evaluation", "promotion/rollback handoff"],
+      "evidence": ["TRAINING_RESULT", "CHECKPOINT", "SERVING_ENDPOINT", "EVALUATION_RESULT", "SERVING_TEARDOWN"],
+      "must_not_own": ["Peak pointer side effect", "Harness slimming side effect", "reviewer authentication"]
+    },
+    {
+      "path": "src/post_training_rsi/harness/persistence.py",
+      "owner": "immutable Harness snapshots and active-pointer CAS",
+      "states": ["ACCEPT_HARNESS", "SLIM_HARNESS"],
+      "inputs": ["committed ACCEPT Decision", "HarnessSpec"],
+      "outputs": ["Harness bundle", "active_harness.json", "pointer history"],
+      "evidence": ["HARNESS_SNAPSHOT", "harnesses/*/bundle_manifest.json", "active_harness.json"],
+      "must_not_own": ["Harness score policy", "Prompt mutation", "Git operations"]
+    },
+    {
+      "path": "src/post_training_rsi/lineage/",
+      "owner": "immutable control/checkpoint/Peak/quarantine persistence",
+      "states": ["PROMOTED", "PROMOTE_MODEL", "ROLLED_BACK", "ROLLBACK_MODEL", "QUARANTINED"],
+      "inputs": ["committed records", "artifact bytes", "promotion/rollback Decision"],
+      "outputs": ["control transaction", "Checkpoint bundle", "Peak pointer", "quarantine marker"],
+      "evidence": ["LINEAGE_MANIFEST", "PEAK_POINTER", "REGRESSION_AUDIT"],
+      "must_not_own": ["score thresholds", "Provider calls"]
+    },
+    {
+      "path": "src/post_training_rsi/approval/",
+      "owner": "immutable Dataset/Harness/Checkpoint authority records",
+      "states": ["DATA_REVIEW_PENDING", "HARNESS_REVIEW_PENDING", "MODEL_REVIEW_PENDING"],
+      "inputs": ["review sample", "expected Request SHA-256", "reviewer identity/role"],
+      "outputs": ["immutable Request/Decision", "approval EvidenceRecord/DecisionRecord"],
+      "evidence": ["APPROVAL_REQUEST", "APPROVAL_DECISION"],
+      "must_not_own": ["authentication provider", "score policy", "gated side effect"]
+    }
+  ],
+  "pr_graph": [
+    {"pr": 1, "branch": "docs/agent-state-machine-index", "parent_pr": null, "status": "draft"},
+    {"pr": 2, "branch": "feat/state-domain-contracts", "parent_pr": 1, "status": "draft"},
+    {"pr": 3, "branch": "feat/rsi-loop-policy", "parent_pr": 2, "status": "draft"},
+    {"pr": 4, "branch": "feat/lineage-runtime", "parent_pr": 2, "status": "draft"},
+    {"pr": 5, "branch": "feat/adapter-runtime", "parent_pr": 2, "status": "draft"},
+    {"pr": 6, "branch": "feat/hitl-approval", "parent_pr": 2, "status": "draft"},
+    {"pr": 7, "branch": "feat/rsi-convergence", "parent_pr": 3, "status": "draft"},
+    {"pr": 8, "branch": "feat/harness-outer-loop", "parent_pr": 7, "status": "draft"},
+    {"pr": 9, "branch": "feat/trace-harvesting", "parent_pr": 8, "status": "draft"},
+    {"pr": 10, "branch": "feat/model-inner-loop", "parent_pr": 9, "status": "draft"},
+    {"pr": 11, "branch": "feat/coevolution-convergence", "parent_pr": 10, "status": "draft"}
+  ],
+  "artifact_index": [
+    "runs/coevolution-run.json", "control/transactions/*.json", "harnesses/*/harness.json", "harnesses/*/bundle_manifest.json", "active_harness.json", "active_harness_history/*.json", "trace-datasets/*/raw.jsonl", "trace-datasets/*/accepted.jsonl", "trace-datasets/*/quarantine.jsonl", "trace-datasets/*/filter_audit.jsonl", "trace-datasets/*/harvest_manifest.json", "model-artifacts/*/weights.bin", "checkpoints/*/checkpoint.json", "checkpoints/*/lineage_manifest.json", "checkpoints/*/bundle_manifest.json", "peak_checkpoint.json", "peak_history/*.json", "quarantine/*.json", "reports/coevolution-run-summary.json", "approvals/samples/*.json", "approvals/requests/*.json", "approvals/decisions/*.json"
+  ],
+  "validation_index": [
+    "docs/validation/harness-outer-loop-latest.json",
+    "docs/validation/trace-harvesting-latest.json",
+    "docs/validation/model-inner-loop-latest.json",
+    "docs/validation/coevolution-convergence-latest.json",
+    "docs/release-integrity-latest.json"
+  ],
+  "non_claims": [
+    "production readiness", "real API inference", "real GPU or gradient training", "live vLLM or production serving", "production benchmark validity", "enterprise reviewer authentication", "distributed storage or multi-host transaction safety", "autonomous Git mutation", "Git Town configuration", "production secret provisioning", "external DVC, lakeFS, or MLflow integration"
+  ]
+}

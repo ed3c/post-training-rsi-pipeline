@@ -1,0 +1,20 @@
+{
+  "schema_version": "post-training-rsi.validation/v1",
+  "repository": "ed3c/post-training-rsi-pipeline",
+  "branch": "feat/harness-outer-loop",
+  "tested_commit": "6d57f50d1008cda6243a2f759eacc91862637fa1",
+  "tested_tree": "03d37c93400de1af5eba3abaede467ded5a81d6a",
+  "run_id": "31793525660",
+  "run_attempt": 1,
+  "run_event": "pull_request",
+  "matrix": ["Python 3.11", "Python 3.12"],
+  "checks": [
+    {"name": "install", "status": "PASS"},
+    {"name": "compile and Ruff", "status": "PASS"},
+    {"name": "full pytest and coverage floor", "status": "PASS", "details": "109 passed; 86.72% coverage"},
+    {"name": "compatibility CLI smoke", "status": "PASS"}
+  ],
+  "overall_status": "PASS",
+  "validated_at": "2026-08-14T10:46:00Z",
+  "non_claims": ["real task execution", "production Harness improvement", "model training", "Git Town stack"]
+}
