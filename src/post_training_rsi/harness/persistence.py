@@ -177,7 +177,8 @@ class HarnessSnapshotStore:
             raise LineageIntegrityError(
                 "Harness snapshot and control transaction Run IDs differ"
             )
-        if spec.content_sha256 != sha256_bytes(spec.to_json().encode("utf-8")):
+        spec_bytes = spec.to_json().encode("utf-8")
+        if spec.content_sha256 != sha256_bytes(spec_bytes):
             raise LineageIntegrityError("Harness content hash is internally inconsistent")
         manifest = HarnessSnapshotManifest(
             harness_id=spec.harness_id,
@@ -190,7 +191,6 @@ class HarnessSnapshotStore:
             control_transaction_id=control_transaction_id,
             created_at=created_at,
         )
-        spec_bytes = canonical_json_bytes(spec.to_dict())
         manifest_bytes = canonical_json_bytes(manifest.to_dict())
         final_directory = self._directory(spec.harness_id)
 
@@ -355,7 +355,7 @@ class HarnessPointer:
 
 
 class HarnessPointerStore:
-    """Compare-and-swap the accepted Harness after verifying ACCEPT evidence."""
+    """Atomic compare-and-swap pointer for the accepted Harness."""
 
     def __init__(
         self,
@@ -370,11 +370,20 @@ class HarnessPointerStore:
         self.pointer_path = self.root / "active_harness.json"
         self.history_root = self.root / "harness" / "history"
         self.history_root.mkdir(parents=True, exist_ok=True)
-        self.lock_path = self.root / "harness" / ".active.lock"
+        self.lock_path = self.root / ".active_harness.lock"
         self.control_store = control_store
         self.snapshot_store = snapshot_store
         self.lock_timeout_seconds = lock_timeout_seconds
         self.poll_interval_seconds = poll_interval_seconds
+
+    def load(self) -> HarnessPointer | None:
+        if not self.pointer_path.exists():
+            return None
+        if self.pointer_path.is_symlink():
+            raise LineageIntegrityError("active Harness pointer must not be a symlink")
+        pointer = HarnessPointer.from_dict(read_json_object(self.pointer_path))
+        self._verify_links(pointer)
+        return pointer
 
     def compare_and_swap(
         self,
@@ -382,106 +391,71 @@ class HarnessPointerStore:
         *,
         expected_previous_harness_id: str | None,
     ) -> HarnessPointer:
-        if expected_previous_harness_id is not None:
-            expected_previous_harness_id = validate_id(
-                expected_previous_harness_id,
-                "expected_previous_harness_id",
-            )
-        payload = canonical_json_bytes(pointer.to_dict())
         with exclusive_lock(
             self.lock_path,
             timeout_seconds=self.lock_timeout_seconds,
             poll_interval_seconds=self.poll_interval_seconds,
         ):
-            current = self._load_unlocked(verify_links=True)
-            if current is not None and canonical_json_bytes(current.to_dict()) == payload:
-                return current
+            current = self.load()
             current_id = current.harness_id if current is not None else None
             if current_id != expected_previous_harness_id:
                 raise LineageConflictError(
-                    "Harness compare-and-swap failed: expected "
-                    f"{expected_previous_harness_id!r}, found {current_id!r}"
+                    "active Harness pointer changed since the caller read it"
                 )
             if pointer.previous_harness_id != expected_previous_harness_id:
                 raise LineageConflictError(
-                    "HarnessPointer.previous_harness_id does not match expected active"
+                    "HarnessPointer.previous_harness_id does not match expected previous"
                 )
-            if current is not None:
-                if pointer.cycle < current.cycle:
-                    raise LineageConflictError("Harness pointer cycle cannot move backward")
-                if pointer.score <= current.score:
-                    raise LineageConflictError(
-                        "accepted Harness pointer score must strictly increase"
-                    )
             self._verify_links(pointer)
-            history = self.history_root / (
-                f"cycle-{pointer.cycle:06d}-{pointer.harness_id}.json"
+            history_path = self.history_root / (
+                f"cycle-{pointer.cycle:04d}-{pointer.harness_id}.json"
             )
-            write_immutable(history, payload)
-            replace_atomic(self.pointer_path, payload)
-            return self._load_unlocked(verify_links=True) or pointer
-
-    def load(self) -> HarnessPointer | None:
-        return self._load_unlocked(verify_links=True)
-
-    def _load_unlocked(self, *, verify_links: bool) -> HarnessPointer | None:
-        if not self.pointer_path.exists():
-            return None
-        pointer = HarnessPointer.from_dict(read_json_object(self.pointer_path))
-        if verify_links:
-            self._verify_links(pointer)
-        return pointer
+            pointer_bytes = canonical_json_bytes(pointer.to_dict())
+            write_immutable(history_path, pointer_bytes)
+            replace_atomic(self.pointer_path, pointer_bytes)
+            return self.load() or pointer
 
     def _verify_links(self, pointer: HarnessPointer) -> None:
         transaction = self.control_store.load_transaction(
             pointer.control_transaction_id
         )
-        if transaction.run_id != pointer.run_id:
+        decision = self.control_store.load_decision(pointer.decision_id)
+        if transaction.run_id != pointer.run_id or decision.run_id != pointer.run_id:
             raise LineageIntegrityError(
-                "Harness pointer and control transaction Run IDs differ"
+                "Harness pointer, transaction, and Decision Run IDs differ"
             )
         if not any(
             ref.record_type == DecisionRecord.RECORD_TYPE
-            and ref.record_id == pointer.decision_id
+            and ref.record_id == decision.decision_id
             for ref in transaction.records
         ):
             raise LineageIntegrityError(
-                "Harness ACCEPT Decision is not in the referenced transaction"
+                "Harness pointer Decision is not committed by the referenced transaction"
             )
-        decision = self.control_store.load_decision(pointer.decision_id)
+        if decision.subject_type is not DecisionSubject.HARNESS:
+            raise LineageIntegrityError("Harness pointer Decision subject must be Harness")
+        if decision.subject_id != pointer.harness_id:
+            raise LineageIntegrityError("Harness pointer Decision subject ID mismatch")
         if decision.action is not DecisionAction.ACCEPT:
             raise LineageIntegrityError("Harness pointer requires an ACCEPT Decision")
-        if decision.subject_type is not DecisionSubject.HARNESS:
-            raise LineageIntegrityError("Harness pointer Decision must target a Harness")
-        if decision.subject_id != pointer.harness_id:
+        snapshot = self.snapshot_store.load(pointer.harness_id)
+        if snapshot.manifest.manifest_sha256 != pointer.snapshot_manifest_sha256:
+            raise LineageIntegrityError("Harness pointer snapshot manifest SHA-256 mismatch")
+        if snapshot.manifest.score != pointer.score:
+            raise LineageIntegrityError("Harness pointer and snapshot scores differ")
+        if snapshot.manifest.control_transaction_id != pointer.control_transaction_id:
             raise LineageIntegrityError(
-                "Harness pointer Decision targets a different Harness"
+                "Harness pointer and snapshot transaction IDs differ"
             )
-        if decision.run_id != pointer.run_id:
-            raise LineageIntegrityError(
-                "Harness pointer and Decision Run IDs differ"
-            )
-        bundle = self.snapshot_store.load(pointer.harness_id)
-        if bundle.manifest.run_id != pointer.run_id:
-            raise LineageIntegrityError(
-                "Harness pointer and snapshot Run IDs differ"
-            )
-        if bundle.manifest.cycle != pointer.cycle:
-            raise LineageIntegrityError(
-                "Harness pointer and snapshot cycles differ"
-            )
-        if bundle.manifest.control_transaction_id != pointer.control_transaction_id:
-            raise LineageIntegrityError(
-                "Harness pointer and snapshot reference different transactions"
-            )
-        if bundle.manifest.manifest_sha256 != pointer.snapshot_manifest_sha256:
-            raise LineageIntegrityError("Harness snapshot manifest hash mismatch")
-        if not math.isclose(
-            bundle.manifest.score,
-            pointer.score,
-            rel_tol=0.0,
-            abs_tol=1e-12,
-        ):
-            raise LineageIntegrityError(
-                "Harness pointer score differs from snapshot score"
-            )
+        if snapshot.manifest.status != "ACTIVE":
+            raise LineageIntegrityError("Harness pointer target must be ACTIVE")
+
+
+__all__ = [
+    "HARNESS_SCHEMA_VERSION",
+    "HarnessPointer",
+    "HarnessPointerStore",
+    "HarnessSnapshotBundle",
+    "HarnessSnapshotManifest",
+    "HarnessSnapshotStore",
+]
