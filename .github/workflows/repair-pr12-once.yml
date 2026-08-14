@@ -20,200 +20,42 @@ jobs:
           ref: feat/coevolution-audit-recovery
           fetch-depth: 0
 
-      - name: Apply deterministic audit and CI repair
+      - name: Apply deterministic audit repair
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
-          audit = Path('src/post_training_rsi/audit/coevolution.py')
-          text = audit.read_text(encoding='utf-8')
+          audit = Path("src/post_training_rsi/audit/coevolution.py")
+          text = audit.read_text(encoding="utf-8")
           replacements = {
-              'from ..control_plane import DecisionSubject, StateSnapshot\n': (
-                  'from ..control_plane import StateSnapshot\n'
+              "from ..control_plane import DecisionSubject, StateSnapshot\n": (
+                  "from ..control_plane import StateSnapshot\n"
               ),
-              '                        subject=metadata.pending_approval_subject,\n': (
-                  '                        approval_subject=metadata.pending_approval_subject,\n'
+              "                        subject=metadata.pending_approval_subject,\n": (
+                  "                        approval_subject=metadata.pending_approval_subject,\n"
               ),
           }
           for old, new in replacements.items():
               if old not in text:
-                  raise SystemExit(f'expected audit repair target not found: {old!r}')
+                  raise SystemExit(f"expected audit repair target not found: {old!r}")
               text = text.replace(old, new, 1)
-          audit.write_text(text, encoding='utf-8')
+          audit.write_text(text, encoding="utf-8")
 
-          tests = Path('tests/test_coevolution_audit.py')
-          text = tests.read_text(encoding='utf-8')
-          old = 'import pytest\n\n'
+          tests = Path("tests/test_coevolution_audit.py")
+          text = tests.read_text(encoding="utf-8")
+          old = "import pytest\n\n"
           if old not in text:
-              raise SystemExit('expected unused pytest import not found')
-          tests.write_text(text.replace(old, '', 1), encoding='utf-8')
-
-          checker = Path('scripts/check_mypy_delta.py')
-          checker.write_text(
-              '''#!/usr/bin/env python3
-from __future__ import annotations
-
-import argparse
-import re
-import shutil
-import subprocess
-import sys
-import tempfile
-from collections import Counter
-from pathlib import Path
-
-_ERROR = re.compile(
-    r"^(.*?):\\d+(?::\\d+)?: error: (.*?)(?:\\s+\\[([^]]+)\\])?$"
-)
-
-
-def _normalize_path(raw: str) -> str:
-    value = raw.replace("\\\\", "/")
-    for marker in ("/src/", "/tests/", "/scripts/"):
-        if marker in value:
-            return value.split(marker, 1)[1].join((marker.strip("/"), "/"))
-    return value.removeprefix("./")
-
-
-def _fingerprints(output: str) -> Counter[str]:
-    result: Counter[str] = Counter()
-    for line in output.splitlines():
-        match = _ERROR.match(line)
-        if match is None:
-            continue
-        path, message, code = match.groups()
-        suffix = f" [{code}]" if code else ""
-        result[f"{_normalize_path(path)}: {message}{suffix}"] += 1
-    return result
-
-
-def _run_mypy(cwd: Path) -> tuple[int, str, Counter[str]]:
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "mypy",
-            "src",
-            "--show-error-codes",
-            "--no-error-summary",
-        ],
-        cwd=cwd,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        check=False,
-    )
-    if completed.returncode not in {0, 1}:
-        print(completed.stdout)
-        raise RuntimeError(
-            f"mypy could not complete in {cwd}: exit {completed.returncode}"
-        )
-    return completed.returncode, completed.stdout, _fingerprints(completed.stdout)
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Reject new mypy errors relative to the exact PR base ref."
-    )
-    parser.add_argument("--base-ref", required=True)
-    args = parser.parse_args()
-
-    repository = Path.cwd().resolve()
-    temporary_root = Path(tempfile.mkdtemp(prefix="post-training-rsi-mypy-base-"))
-    base_tree = temporary_root / "tree"
-    try:
-        subprocess.run(
-            ["git", "worktree", "add", "--detach", str(base_tree), args.base_ref],
-            cwd=repository,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            check=True,
-        )
-        _, base_output, base_errors = _run_mypy(base_tree)
-        _, head_output, head_errors = _run_mypy(repository)
-
-        new_errors = head_errors - base_errors
-        resolved_errors = base_errors - head_errors
-        print(
-            "mypy delta: "
-            f"base={sum(base_errors.values())}, "
-            f"head={sum(head_errors.values())}, "
-            f"resolved={sum(resolved_errors.values())}, "
-            f"new={sum(new_errors.values())}"
-        )
-        if new_errors:
-            print("New mypy errors relative to the exact base ref:")
-            for fingerprint, count in sorted(new_errors.items()):
-                print(f"  {count} x {fingerprint}")
-            print("\nHead mypy output:\n" + head_output)
-            print("\nBase mypy output:\n" + base_output)
-            return 1
-        return 0
-    finally:
-        subprocess.run(
-            ["git", "worktree", "remove", "--force", str(base_tree)],
-            cwd=repository,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
-        shutil.rmtree(temporary_root, ignore_errors=True)
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
-''',
-              encoding='utf-8',
-          )
-
-          for workflow_name in ('coevolution.yml', 'coevolution-audit.yml'):
-              workflow = Path('.github/workflows') / workflow_name
-              text = workflow.read_text(encoding='utf-8')
-              checkout = (
-                  '      - name: Check out repository\n'
-                  '        uses: actions/checkout@v4\n'
-              )
-              checkout_with_history = (
-                  '      - name: Check out repository\n'
-                  '        uses: actions/checkout@v4\n'
-                  '        with:\n'
-                  '          fetch-depth: 0\n'
-              )
-              if checkout not in text:
-                  raise SystemExit(f'checkout target missing in {workflow_name}')
-              text = text.replace(checkout, checkout_with_history, 1)
-              old = '          mypy src\n'
-              new = (
-                  '          base_ref="${GITHUB_BASE_REF:-}"\n'
-                  '          if [ -n "$base_ref" ]; then\n'
-                  '            git fetch --no-tags origin "$base_ref"\n'
-                  '            base_ref="origin/$base_ref"\n'
-                  '          else\n'
-                  '            base_ref="$(git rev-parse HEAD^)"\n'
-                  '          fi\n'
-                  '          python scripts/check_mypy_delta.py --base-ref "$base_ref"\n'
-              )
-              if old not in text:
-                  raise SystemExit(f'mypy target missing in {workflow_name}')
-              text = text.replace(old, new, 1)
-              trigger = f'      - ".github/workflows/{workflow_name}"\n'
-              if trigger in text and '      - "scripts/check_mypy_delta.py"\n' not in text:
-                  text = text.replace(
-                      trigger,
-                      trigger + '      - "scripts/check_mypy_delta.py"\n',
-                      1,
-                  )
-              workflow.write_text(text, encoding='utf-8')
+              raise SystemExit("expected unused pytest import not found")
+          tests.write_text(text.replace(old, "", 1), encoding="utf-8")
           PY
           rm .github/workflows/repair-pr12-once.yml
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
           cache: pip
 
       - name: Install development dependencies
@@ -257,14 +99,11 @@ if __name__ == "__main__":
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'ed3c'
-          git config user.email 'mcnum01@gmail.com'
+          git config user.name "ed3c"
+          git config user.email "mcnum01@gmail.com"
           git add \
             src/post_training_rsi/audit/coevolution.py \
             tests/test_coevolution_audit.py \
-            scripts/check_mypy_delta.py \
-            .github/workflows/coevolution.yml \
-            .github/workflows/coevolution-audit.yml \
             .github/workflows/repair-pr12-once.yml
-          git commit -m 'fix(audit): enforce exact-base mypy delta and static validation'
+          git commit -m "fix(audit): satisfy exact-head static validation"
           git push origin HEAD:feat/coevolution-audit-recovery
