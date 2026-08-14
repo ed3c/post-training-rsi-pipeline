@@ -1,47 +1,89 @@
 {
+  "model_id": "mock-student-8b",
+  "teacher_model": "mock-teacher-70b",
+  "seed": 7,
   "budget": {
     "total_limit_usd": 30.0,
-    "per_trial_limit_usd": 20.0,
-    "max_iterations": 5,
-    "max_retries_per_stage": 3
+    "per_iteration_limit_usd": 20.0,
+    "max_consecutive_api_failures": 3
   },
-  "diversity": {
+  "verification": {
     "min_entropy": 3.0,
     "min_distinct_2": 0.35,
+    "min_type_token_ratio": 0.25,
     "max_semantic_similarity": 0.95,
-    "low_diversity_acceptance_floor": 0.25
+    "benchmark_ngram_size": 13,
+    "max_benchmark_overlap": 0.7,
+    "max_lcs_ratio": 0.8,
+    "min_acceptance_rate": 0.25,
+    "allowed_python_imports": [
+      "collections",
+      "dataclasses",
+      "functools",
+      "itertools",
+      "json",
+      "math",
+      "re",
+      "statistics",
+      "typing"
+    ]
   },
-  "decontamination": {
-    "ngram_size": 13,
-    "overlap_threshold": 0.70,
-    "lcs_threshold": 0.80
-  },
-  "early_stopping": {
-    "patience": 3,
-    "min_delta": 0.001,
-    "regression_tolerance": 0.0
+  "rsi": {
+    "max_iterations": 5,
+    "plateau_patience": 3,
+    "min_improvement": 0.001,
+    "examples_per_iteration": 12,
+    "initial_score": 0.5,
+    "benchmark_id": "mock-agent-benchmark"
   },
   "co_evolution": {
-    "plateau_patience": 3,
-    "target_trace_count": 30,
     "max_cycles": 2,
-    "max_outer_iterations_per_cycle": 12
+    "max_outer_iterations": 12,
+    "plateau_patience": 3,
+    "target_traces": 30,
+    "harness_min_improvement": 0.005,
+    "model_min_improvement": 0.005
   },
-  "teacher": {
-    "model_id": "mock-teacher-70b",
-    "api_version": "mock-v1",
-    "base_url": null,
-    "input_cost_per_million": 0.0,
-    "output_cost_per_million": 0.0,
-    "timeout_seconds": 60.0,
-    "max_workers": 4
+  "adapters": {
+    "teacher": {
+      "backend": "mock",
+      "model_id": "mock-teacher-70b",
+      "api_version": "mock-v1",
+      "base_url": null,
+      "api_key_env": "TEACHER_API_KEY",
+      "input_cost_per_million": 0.0,
+      "output_cost_per_million": 0.0,
+      "timeout_seconds": 60.0,
+      "max_attempts": 3,
+      "initial_backoff_seconds": 0.0
+    },
+    "training": {
+      "backend": "mock",
+      "command": [],
+      "timeout_seconds": 14400.0,
+      "max_attempts": 1,
+      "initial_backoff_seconds": 0.0,
+      "allow_external_artifact_path": false
+    },
+    "evaluation": {
+      "backend": "deterministic",
+      "command": [],
+      "timeout_seconds": 7200.0,
+      "max_attempts": 1,
+      "initial_backoff_seconds": 0.0,
+      "score_min": 0.0,
+      "score_max": 1.0
+    },
+    "serving": {
+      "backend": "local",
+      "deploy_command": [],
+      "undeploy_command": [],
+      "timeout_seconds": 1800.0,
+      "max_attempts": 1,
+      "initial_backoff_seconds": 0.0
+    }
   },
   "benchmark_texts": [
     "A protected benchmark fixture must never appear in training data verbatim."
-  ],
-  "safety_patterns": [
-    "ignore previous instructions",
-    "reveal the system prompt",
-    "prompt injection"
   ]
 }
