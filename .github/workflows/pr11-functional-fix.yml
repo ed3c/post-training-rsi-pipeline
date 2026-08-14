@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   repair:
+    if: ${{ !contains(github.event.head_commit.message, 'fix(pr11): repair durable') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -133,16 +134,7 @@ jobs:
               "    assert \"coevolve\" in coevolution\n"
               "    assert \"`coevolve`\" in status\n",
           )
-          replace(
-              ".github/workflows/coevolution.yml",
-              "          mypy src\n",
-              "          # Repository-wide mypy has inherited baseline debt and is not an\n"
-              "          # exact-head gate for PR #11. Compile and Ruff remain mandatory;\n"
-              "          # the debt is tracked explicitly in the validation report.\n",
-          )
 
-          # Synchronize agent-facing current truth without rewriting the historical RSI
-          # sections that remain useful as the PR #7 baseline.
           readme = Path("README.md")
           text = readme.read_text(encoding="utf-8")
           text = text.replace(
@@ -155,38 +147,32 @@ jobs:
               "| Model/Harness Co-Evolution | Not yet supported | Harness components may exist, but no `coevolve` CLI or converged outer/middle/inner loop |",
               "| Model/Harness Co-Evolution | Supported deterministic reference | `coevolve` composes frozen-model Harness search, observable Trace harvesting, model inner-loop evaluation, durable resume, pointer history, and rollback/stop guards |",
           )
-          rsi_block = (
-              "post-training-rsi \\\n"
-              "  --config configs/pipeline.example.json \\\n"
-              "  --workspace artifacts/rsi \\\n"
-              "  --run-id run-local-001 \\\n"
-              "  rsi\n"
-              "```\n"
-          )
-          if rsi_block not in text:
-              raise SystemExit("README RSI quick-start block not found")
-          coevolve_block = rsi_block + (
-              "\nRun or resume the deterministic Co-Evolution reference runtime:\n\n"
+          marker = "  rsi\n```\n\nVerify a JSONL Dataset:"
+          insertion = (
+              "  rsi\n```\n\n"
+              "Run or resume the deterministic Co-Evolution reference runtime:\n\n"
               "```bash\n"
               "post-training-rsi \\\n"
               "  --config configs/pipeline.example.json \\\n"
               "  --workspace artifacts/coevolution \\\n"
               "  --run-id coevolution-local-001 \\\n"
               "  coevolve\n"
-              "```\n"
+              "```\n\nVerify a JSONL Dataset:"
           )
-          text = text.replace(rsi_block, coevolve_block, 1)
+          if marker not in text:
+              raise SystemExit("README RSI quick-start marker not found")
+          text = text.replace(marker, insertion, 1)
           text = text.replace(
               "`make coevolve` remains intentionally red until a supported Co-Evolution command lands.",
               "`make coevolve` runs the deterministic local reference composition. It does not authorize real GPU, cloud endpoint, production benchmark, or autonomous Git mutation.",
           )
           text = text.replace(
-              "│   ├── __main__.py                        CLI dispatch: demo/rsi/verify/audit/approvals/review",
-              "│   ├── __main__.py                        CLI dispatch: demo/rsi/coevolve/verify/audit/approvals/review",
+              "CLI dispatch: demo/rsi/verify/audit/approvals/review",
+              "CLI dispatch: demo/rsi/coevolve/verify/audit/approvals/review",
           )
           text = text.replace(
-              "│   └── harness/                           future Co-Evolution components; not CLI-converged",
-              "│   └── harness/                           outer/middle/inner Co-Evolution components and durable persistence",
+              "future Co-Evolution components; not CLI-converged",
+              "outer/middle/inner Co-Evolution components and durable persistence",
           )
           readme.write_text(text, encoding="utf-8")
 
@@ -225,13 +211,11 @@ jobs:
               "- production-grade or externally validated Model/Harness Co-Evolution;",
           )
           status.write_text(text, encoding="utf-8")
-
-          Path(".github/workflows/pr11-functional-fix.yml").unlink()
           PY
       - name: Commit repairs
         run: |
           git config user.name 'ed3c'
           git config user.email 'mcnum01@gmail.com'
-          git add -A
+          git add README.md docs/implementation-status.md tests/test_documentation_contract.py src/post_training_rsi
           git commit -m 'fix(pr11): repair durable Co-Evolution runtime and command truth'
           git push origin HEAD:feat/coevolution-convergence
