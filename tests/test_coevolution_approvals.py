@@ -122,11 +122,13 @@ def test_coevolution_pauses_and_resumes_all_three_approval_boundaries(
     workspace = tmp_path / "workspace"
     config_path = _config_file(tmp_path)
     config = PipelineConfig.load(config_path)
-    controller = lambda: build_reference_coevolution_controller(
-        config,
-        workspace=workspace,
-        run_id="coevolution-approval-run",
-    )
+
+    def controller():
+        return build_reference_coevolution_controller(
+            config,
+            workspace=workspace,
+            run_id="coevolution-approval-run",
+        )
 
     harness_pending = controller().run()
     assert harness_pending.status == "AWAITING_HARNESS_APPROVAL"
