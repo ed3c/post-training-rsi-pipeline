@@ -287,10 +287,7 @@ class ReferenceModelTrainer:
             training_loss=max(0.01, 0.25 - request.cycle * 0.03),
             training_cost_usd=0.20 + request.accepted_example_count * 0.001,
             trained_at=self.clock.at(cycle=request.cycle, ordinal=700),
-            evidence_ids=(
-                f"ev-reference-training-c{request.cycle:02d}",
-                f"ev-reference-artifact-c{request.cycle:02d}",
-            ),
+            evidence_ids=request.evidence_ids,
             metadata={
                 "provider": "reference-local-trainer",
                 "expected_reference_score": self.expected_score,
@@ -310,7 +307,7 @@ class ReferenceModelDeployer:
             checkpoint_id=candidate.checkpoint_id,
             endpoint=f"memory://reference-model/{candidate.checkpoint_id}",
             deployed_at=self.clock.at(cycle=candidate.cycle, ordinal=710),
-            evidence_ids=(f"ev-reference-deploy-c{candidate.cycle:02d}",),
+            evidence_ids=candidate.evidence_ids,
         )
 
 
@@ -355,7 +352,7 @@ class ReferenceModelEvaluator:
             ),
             evaluation_cost_usd=0.15,
             evaluated_at=self.clock.at(cycle=candidate.cycle, ordinal=720),
-            evidence_ids=(f"ev-reference-model-eval-c{candidate.cycle:02d}",),
+            evidence_ids=candidate.evidence_ids,
             metadata={"provider": "reference-local-evaluator"},
         )
 
@@ -372,7 +369,7 @@ class ReferenceModelTeardown:
             checkpoint_id=lease.checkpoint_id,
             torn_down=True,
             completed_at=self.clock.at(cycle=1, ordinal=730 + self.calls),
-            evidence_ids=(f"ev-reference-teardown-{lease.deployment_id}",),
+            evidence_ids=lease.evidence_ids,
         )
 
 

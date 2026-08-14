@@ -1167,15 +1167,9 @@ class CoEvolutionController:
                 execution.evidence.checkpoint,
             )
         )
-        policy_candidate = replace(
-            execution.bundle.candidate,
-            evidence_ids=tuple(
-                evidence.evidence_id for evidence in training_evidence
-            ),
-        )
         trained_step = policy.training_completed(
             policy_input,
-            policy_candidate,
+            execution.bundle.candidate,
         )
         self._commit_step(
             trained_step,
@@ -1193,15 +1187,9 @@ class CoEvolutionController:
                 execution.evidence.teardown,
             )
         )
-        policy_evaluation = replace(
-            execution.bundle.evaluation,
-            evidence_ids=tuple(
-                evidence.evidence_id for evidence in evaluation_evidence
-            ),
-        )
         evaluated_step = policy.evaluation_completed(
             trained_step.final_snapshot,
-            policy_evaluation,
+            execution.bundle.evaluation,
         )
         committed_evaluation = self._commit_step(
             evaluated_step,
