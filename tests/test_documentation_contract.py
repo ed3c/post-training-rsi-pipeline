@@ -6,7 +6,7 @@ from pathlib import Path
 from post_training_rsi.__main__ import _parser
 
 ROOT = Path(__file__).resolve().parents[1]
-SUPPORTED_COMMANDS = {
+RSI_COMMANDS = {
     "demo",
     "rsi",
     "verify",
@@ -14,19 +14,32 @@ SUPPORTED_COMMANDS = {
     "approvals",
     "review",
 }
+COEVOLUTION_COMMANDS = {
+    "coevolve",
+    "coevolve-status",
+    "coevolve-audit",
+}
+SUPPORTED_COMMANDS = RSI_COMMANDS | COEVOLUTION_COMMANDS
 REQUIRED_DOCUMENTS = {
     "AGENTS.md",
     "README.md",
     "docs/AGENTS.md",
     "docs/README.md",
+    "docs/architecture-manifest.json",
     "docs/implementation-status.md",
     "docs/state-machine.md",
     "docs/rsi-convergence.md",
+    "docs/coevolution-convergence.md",
+    "docs/coevolution-audit-recovery.md",
     "docs/control-plane-contracts.md",
     "docs/rsi-loop-policy.md",
     "docs/adapter-runtime.md",
+    "docs/integration-contracts.md",
     "docs/lineage-runtime.md",
     "docs/hitl-approval.md",
+    "docs/harness-outer-loop.md",
+    "docs/trace-harvesting.md",
+    "docs/model-inner-loop.md",
     "docs/traceability-index.md",
     "docs/stacked-pr-plan.md",
     "docs/architecture.md",
@@ -61,16 +74,22 @@ def _local_markdown_links(text: str) -> set[str]:
 
 def test_supported_cli_and_readme_stay_synchronized() -> None:
     commands = _cli_commands()
-    assert SUPPORTED_COMMANDS <= commands
-    assert "coevolve" not in commands
+    assert commands == SUPPORTED_COMMANDS
 
     readme = _read("README.md")
-    convergence = _read("docs/rsi-convergence.md")
     status = _read("docs/implementation-status.md")
+    rsi = _read("docs/rsi-convergence.md")
+    coevolution = _read("docs/coevolution-convergence.md")
+    audit = _read("docs/coevolution-audit-recovery.md")
+
     for command in SUPPORTED_COMMANDS:
         assert f"`{command}`" in readme
-        assert command in convergence
         assert f"`{command}`" in status
+    for command in RSI_COMMANDS:
+        assert command in rsi
+    assert "coevolve" in coevolution
+    for command in ("coevolve-status", "coevolve-audit"):
+        assert command in audit
 
 
 def test_required_document_graph_exists() -> None:
@@ -101,6 +120,7 @@ def test_directory_state_ownership_is_indexed() -> None:
         "evaluation/",
         "lineage/",
         "harness/",
+        "audit/",
     ):
         assert path in readme
 
@@ -108,6 +128,7 @@ def test_directory_state_ownership_is_indexed() -> None:
         "orchestration/converged.py",
         "orchestration/rsi_policy.py",
         "orchestration/run_state.py",
+        "orchestration/coevolution.py",
     ):
         assert module in readme
 
@@ -140,7 +161,7 @@ def test_pr_graph_and_git_town_non_claim_are_explicit() -> None:
     stack = _read("docs/stacked-pr-plan.md")
     root_agents = _read("AGENTS.md")
 
-    for number in range(1, 12):
+    for number in range(1, 13):
         marker = f"PR #{number}"
         assert marker in readme or marker in stack
 
@@ -151,7 +172,9 @@ def test_pr_graph_and_git_town_non_claim_are_explicit() -> None:
 
 def test_supported_state_machine_documents_failure_and_resume_edges() -> None:
     state = _read("docs/state-machine.md")
-    convergence = _read("docs/rsi-convergence.md")
+    rsi = _read("docs/rsi-convergence.md")
+    coevolution = _read("docs/coevolution-convergence.md")
+    audit = _read("docs/coevolution-audit-recovery.md")
 
     for token in (
         "DATA_REVIEW_PENDING",
@@ -163,5 +186,8 @@ def test_supported_state_machine_documents_failure_and_resume_edges() -> None:
         "compare-and-swap",
         "teardown",
         "Resume",
+        "HARVEST_TRACES",
+        "SLIM_HARNESS",
+        "read-only",
     ):
-        assert token in state or token in convergence
+        assert token in state or token in rsi or token in coevolution or token in audit
