@@ -16,7 +16,10 @@ from .lineage import (
     PeakPointerStore,
 )
 from .models import SyntheticExample
-from .orchestration import build_converged_rsi_controller
+from .orchestration import (
+    build_converged_rsi_controller,
+    build_reference_coevolution_controller,
+)
 from .verification.pipeline import VerificationPipeline
 
 
@@ -41,6 +44,13 @@ def _parser() -> argparse.ArgumentParser:
     subparsers.add_parser(
         "rsi",
         help="run or resume the converged multi-iteration RSI controller",
+    )
+    subparsers.add_parser(
+        "coevolve",
+        help=(
+            "run or resume the deterministic durable Model/Harness "
+            "Co-Evolution reference runtime"
+        ),
     )
 
     verify = subparsers.add_parser(
@@ -90,6 +100,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "rsi":
         result = build_converged_rsi_controller(
+            config,
+            workspace=workspace,
+            run_id=args.run_id,
+        ).run()
+        _print_json(result.to_dict())
+        return 0
+
+    if args.command == "coevolve":
+        result = build_reference_coevolution_controller(
             config,
             workspace=workspace,
             run_id=args.run_id,
