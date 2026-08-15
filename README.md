@@ -212,6 +212,7 @@ The exact implementation modules are `orchestration/converged.py`, `orchestratio
 ## Documentation
 
 - [Documentation index](docs/README.md)
+- [Machine-readable architecture manifest](docs/architecture-manifest.json)
 - [Implementation status](docs/implementation-status.md)
 - [Architecture](docs/architecture.md)
 - [State Machine](docs/state-machine.md)
