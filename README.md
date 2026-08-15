@@ -1,4 +1,4 @@
-<!-- i18n-key: README; locale: en; reviewed: 2026-08-15 -->
+<!-- i18n-key: README; locale: en; reviewed: 2026-08-16 -->
 [English](README.md) · [繁體中文](README.zh-TW.md)
 
 # Post-Training RSI Pipeline
@@ -9,11 +9,11 @@
 
 **An evidence-first reference pipeline for post-training data, Recursive Self-Improvement (RSI), and Model/Harness Co-Evolution.**
 
-> **Maturity:** alpha reference implementation. The deterministic local path is supported. Real Teacher APIs, GPU training, external serving, production benchmarks, automatic release, and autonomous self-modification are not verified by the repository unless an exact run publishes the required evidence.
+> **Maturity:** alpha reference implementation. The deterministic local path is supported. Real Teacher APIs, GPU training, external serving, production benchmarks, automatic release, and autonomous self-modification are not verified unless an exact run publishes the required evidence.
 
 ## Why this project exists
 
-Post-training systems fail when they treat generated data, training, deployment, evaluation, model promotion, Harness changes, and recovery as one opaque loop. A score increase alone cannot prove that the data was admissible, the candidate came from the declared parent, the benchmark was comparable, or the promoted artifact can be recovered.
+Post-training systems fail when generated data, training, deployment, evaluation, model promotion, Harness changes, and recovery are treated as one opaque loop. A score increase alone cannot prove that data was admissible, a candidate came from the declared parent, a benchmark was comparable, or a promoted artifact can be recovered.
 
 This project makes those transitions explicit:
 
@@ -44,7 +44,7 @@ A separate Co-Evolution controller freezes one side while changing the other, ca
 | Recovery | Read-only status, integrity audit, forensic bundle, and explicit recovery activation planning |
 | Evidence | Exact hashes, run IDs, decisions, transactions, artifacts, pointers, and machine-readable architecture mapping |
 
-The exact supported, component-only, planned, and externally unverified state is maintained in [`docs/implementation-status.md`](docs/implementation-status.md). Historical branch or Pull Request overlays are delivery records, not the current `main` contract.
+The exact supported, component-only, planned, and externally unverified state is maintained in [`docs/implementation-status.md`](docs/implementation-status.md). Historical branches and Pull Requests are delivery records, not the current `main` contract.
 
 ## Architecture
 
@@ -107,7 +107,11 @@ make demo
 Run or resume the deterministic RSI controller:
 
 ```bash
-post-training-rsi   --config configs/pipeline.example.json   --workspace artifacts/rsi   --run-id run-local-001   rsi
+post-training-rsi \
+  --config configs/pipeline.example.json \
+  --workspace artifacts/rsi \
+  --run-id run-local-001 \
+  rsi
 ```
 
 Run the deterministic Co-Evolution reference:
@@ -116,7 +120,24 @@ Run the deterministic Co-Evolution reference:
 make coevolve
 ```
 
-Discover the command surface:
+### Supported CLI contract
+
+The checked-in parser, implementation status, and owning design documents must remain synchronized for every supported command:
+
+| Command | Responsibility |
+|---|---|
+| `demo` | One-iteration deterministic compatibility demonstration |
+| `rsi` | Run or resume the converged RSI controller |
+| `verify` | Verify a candidate Dataset with configured admission gates |
+| `audit` | Audit a committed Checkpoint bundle and control transaction |
+| `approvals` | List immutable approval requests and current states |
+| `review` | Commit one immutable approval or denial decision |
+| `provider-preflight` | Run fail-closed provider admission without contacting a provider |
+| `coevolve` | Run or resume deterministic Model/Harness Co-Evolution |
+| `coevolve-status` | Read the latest durable Co-Evolution status without mutation |
+| `coevolve-audit` | Verify the durable Co-Evolution evidence graph |
+
+Discover arguments with:
 
 ```bash
 post-training-rsi --help
@@ -156,22 +177,37 @@ Before any configured external destination is used, provider preflight checks ad
 
 Do not send private training data, proprietary repository content, customer data, model weights, or credentials to a provider without explicit data-and-destination authorization.
 
-## Repository map
+## Repository map and State Machine ownership
 
 ```text
 src/post_training_rsi/
-├── orchestration/     RSI and Co-Evolution controllers
-├── control/           typed State and decision records
-├── lineage/           transactions, checkpoints, Peak and recovery
-├── adapters/          synthesis, training, serving and evaluation boundaries
-├── approvals/         immutable HITL authority
-└── audit/             read-only status and integrity evidence
+├── control_plane/      states, events, Decisions, Evidence, and durable records
+├── orchestration/      RSI and Co-Evolution controllers
+│   ├── converged.py    supported multi-iteration RSI composition
+│   ├── rsi_policy.py   promotion, rollback, plateau, budget, and stop rules
+│   ├── run_state.py    durable run metadata and resume identity
+│   └── coevolution.py  bounded Model/Harness Co-Evolution composition
+├── adapter_runtime/    provider-neutral execution and lifecycle contracts
+├── approval/           immutable HITL requests, sampling, policy, and decisions
+├── verification/       Dataset admission and quarantine gates
+├── training/           model-training boundary and artifact contracts
+├── serving/            deployment lease and teardown boundary
+├── evaluation/         benchmark and score evidence
+├── lineage/            transactions, checkpoints, Peak CAS, and quarantine
+├── harness/            Harness mutation, traces, persistence, and inner loops
+├── audit/              read-only status and integrity evidence
+├── preflight/          provider/destination/credential admission
+└── recovery_bundle/    inactive forensic export and staged-restore evidence
 
-configs/               deterministic policy examples
-docs/                  architecture, status, contracts, recovery and traceability
-tests/                 transition, tamper, failure and resume coverage
-artifacts/             generated local workspaces; not source truth
+configs/                deterministic policy examples
+docs/                   architecture, status, contracts, recovery, and traceability
+tests/                  transition, tamper, failure, expiry, and resume coverage
+artifacts/              generated local workspaces; never source truth
 ```
+
+The exact implementation modules are `orchestration/converged.py`, `orchestration/rsi_policy.py`, `orchestration/run_state.py`, and `orchestration/coevolution.py`.
+
+**Git Town is not configured** in this repository. The stacked Pull Request graph is documented in [`docs/stacked-pr-plan.md`](docs/stacked-pr-plan.md), but Git Town commands and metadata remain disabled until repository-owned configuration is explicitly admitted and verified.
 
 ## Documentation
 

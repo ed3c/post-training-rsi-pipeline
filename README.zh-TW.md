@@ -1,4 +1,4 @@
-<!-- i18n-key: README; locale: zh-TW; reviewed: 2026-08-15 -->
+<!-- i18n-key: README; locale: zh-TW; reviewed: 2026-08-16 -->
 [English](README.md) · [繁體中文](README.zh-TW.md)
 
 # Post-Training RSI Pipeline
@@ -9,13 +9,13 @@
 
 **用於 Post-training data、Recursive Self-Improvement（RSI）與 Model/Harness Co-Evolution 的 Evidence-first reference pipeline。**
 
-> **成熟度：** Alpha reference implementation。支援 Deterministic local path。除非精確 Run 發布必要 Evidence，本 Repository 不會把 Real Teacher API、GPU training、External serving、Production benchmark、Automatic release 或 Autonomous self-modification 描述為已驗證。
+> **成熟度：** Alpha reference implementation。支援 Deterministic local path。除非 Exact run 發布必要 Evidence，本 Repository 不會把 Real Teacher API、GPU training、External serving、Production benchmark、Automatic release 或 Autonomous self-modification 描述為已驗證。
 
 ## 為什麼需要這個專案
 
-Post-training system 若把 Generated data、Training、Deployment、Evaluation、Model promotion、Harness change 與 Recovery 混成不透明迴圈，通常難以判斷真正失敗位置。單一 Score increase 無法證明 Data admissible、Candidate 來自宣告 Parent、Benchmark 可比較，或 Promoted artifact 可復原。
+Post-training system 若把 Generated data、Training、Deployment、Evaluation、Model promotion、Harness change 與 Recovery 混成一個不透明迴圈，通常無法判斷真正的失敗位置。單一 Score increase 不能證明 Dataset 已通過 Admission、Candidate 來自宣告的 Parent、Benchmark 可比較，或 Promoted artifact 可復原。
 
-本專案明確化各個 Transition：
+本專案把每個 Transition 明確化：
 
 ```text
 diagnose
@@ -44,7 +44,7 @@ diagnose
 | Recovery | Read-only status、Integrity audit、Forensic bundle 與 Explicit recovery activation planning |
 | Evidence | Exact hash、Run ID、Decision、Transaction、Artifact、Pointer 與 Machine-readable architecture mapping |
 
-精確的 Supported、Component-only、Planned 與 Externally unverified 狀態維護於 [`docs/implementation-status.md`](docs/implementation-status.md)。歷史 Branch 或 Pull Request overlay 是 Delivery record，不是目前 `main` contract。
+精確的 Supported、Component-only、Planned 與 Externally unverified 狀態維護於 [`docs/implementation-status.md`](docs/implementation-status.md)。歷史 Branch 與 Pull Request 是 Delivery record，不是目前 `main` contract。
 
 ## 架構
 
@@ -107,7 +107,11 @@ make demo
 執行或 Resume Deterministic RSI controller：
 
 ```bash
-post-training-rsi   --config configs/pipeline.example.json   --workspace artifacts/rsi   --run-id run-local-001   rsi
+post-training-rsi \
+  --config configs/pipeline.example.json \
+  --workspace artifacts/rsi \
+  --run-id run-local-001 \
+  rsi
 ```
 
 執行 Deterministic Co-Evolution reference：
@@ -116,7 +120,24 @@ post-training-rsi   --config configs/pipeline.example.json   --workspace artifac
 make coevolve
 ```
 
-查看 Command surface：
+### Supported CLI contract
+
+Checked-in parser、Implementation status 與各 Command 所屬設計文件，必須對下列 Supported command 維持同步：
+
+| Command | 責任 |
+|---|---|
+| `demo` | 單次迭代的 Deterministic compatibility demonstration |
+| `rsi` | 執行或 Resume Converged RSI controller |
+| `verify` | 依設定的 Admission gate 驗證 Candidate Dataset |
+| `audit` | 稽核 Committed Checkpoint bundle 與 Control transaction |
+| `approvals` | 列出 Immutable approval request 與目前 State |
+| `review` | Commit 一筆 Immutable approval 或 denial decision |
+| `provider-preflight` | 不接觸 Provider，先執行 Fail-closed admission |
+| `coevolve` | 執行或 Resume Deterministic Model/Harness Co-Evolution |
+| `coevolve-status` | 不修改 Workspace，讀取最新 Durable status |
+| `coevolve-audit` | 驗證 Durable Co-Evolution evidence graph |
+
+查看 Arguments：
 
 ```bash
 post-training-rsi --help
@@ -156,22 +177,37 @@ Improvement boundary 相等時必須 Reject。Rejected 或 Rolled-back candidate
 
 沒有明確 Data-and-destination authorization 時，不得把 Private training data、Proprietary repository content、Customer data、Model weight 或 Credential 傳送到 Provider。
 
-## Repository map
+## Repository map 與 State Machine ownership
 
 ```text
 src/post_training_rsi/
-├── orchestration/     RSI and Co-Evolution controllers
-├── control/           typed State and decision records
-├── lineage/           transactions, checkpoints, Peak and recovery
-├── adapters/          synthesis, training, serving and evaluation boundaries
-├── approvals/         immutable HITL authority
-└── audit/             read-only status and integrity evidence
+├── control_plane/      State、Event、Decision、Evidence 與 Durable record
+├── orchestration/      RSI 與 Co-Evolution controller
+│   ├── converged.py    Supported multi-iteration RSI composition
+│   ├── rsi_policy.py   Promotion、Rollback、Plateau、Budget 與 Stop rule
+│   ├── run_state.py    Durable run metadata 與 Resume identity
+│   └── coevolution.py  Bounded Model/Harness Co-Evolution composition
+├── adapter_runtime/    Provider-neutral execution 與 Lifecycle contract
+├── approval/           Immutable HITL request、Sampling、Policy 與 Decision
+├── verification/       Dataset admission 與 Quarantine gate
+├── training/           Model-training boundary 與 Artifact contract
+├── serving/            Deployment lease 與 Teardown boundary
+├── evaluation/         Benchmark 與 Score evidence
+├── lineage/            Transaction、Checkpoint、Peak CAS 與 Quarantine
+├── harness/            Harness mutation、Trace、Persistence 與 Inner loop
+├── audit/              Read-only status 與 Integrity evidence
+├── preflight/          Provider／Destination／Credential admission
+└── recovery_bundle/    Inactive forensic export 與 Staged-restore evidence
 
-configs/               deterministic policy examples
-docs/                  architecture, status, contracts, recovery and traceability
-tests/                 transition, tamper, failure and resume coverage
-artifacts/             generated local workspaces; not source truth
+configs/                Deterministic policy examples
+docs/                   Architecture、Status、Contracts、Recovery 與 Traceability
+tests/                  Transition、Tamper、Failure、Expiry 與 Resume coverage
+artifacts/              Generated local workspace；不是 Source truth
 ```
+
+精確實作模組為 `orchestration/converged.py`、`orchestration/rsi_policy.py`、`orchestration/run_state.py` 與 `orchestration/coevolution.py`。
+
+本 Repository 的 **Git Town is not configured**。Stacked Pull Request graph 記錄於 [`docs/stacked-pr-plan.md`](docs/stacked-pr-plan.md)，在 Repository-owned configuration 被明確核准並完成驗證前，Git Town command 與 Metadata 維持 disabled。
 
 ## 文件
 
