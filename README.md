@@ -1,220 +1,146 @@
+<!-- i18n-key: README; locale: en; reviewed: 2026-08-15 -->
+[English](README.md) · [繁體中文](README.zh-TW.md)
+
 # Post-Training RSI Pipeline
 
-> Evidence-first reference implementation for post-training data design, Recursive Self-Improvement (RSI), and Model/Harness Co-Evolution.
+[![CI](https://github.com/ed3c/post-training-rsi-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/ed3c/post-training-rsi-pipeline/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](pyproject.toml)
 
-This repository turns the source architecture into executable components, typed control records, immutable evidence, and molecular Pull Requests. It separates three kinds of truth:
+**An evidence-first reference pipeline for post-training data, Recursive Self-Improvement (RSI), and Model/Harness Co-Evolution.**
 
-- **supported on the current branch** — reachable from a checked-in CLI command and covered by deterministic tests;
-- **implemented component** — coded and tested, but not reachable from the supported composition root;
-- **target architecture** — planned behavior that still requires an implementation PR and evidence.
+> **Maturity:** alpha reference implementation. The deterministic local path is supported. Real Teacher APIs, GPU training, external serving, production benchmarks, automatic release, and autonomous self-modification are not verified by the repository unless an exact run publishes the required evidence.
 
-Read [`AGENTS.md`](AGENTS.md) before changing code. The document index is in [`docs/README.md`](docs/README.md), and the machine-readable directory → State Machine → evidence → PR index is [`docs/architecture-manifest.json`](docs/architecture-manifest.json).
+## Why this project exists
 
-## PR #12 current branch overlay
+Post-training systems fail when they treat generated data, training, deployment, evaluation, model promotion, Harness changes, and recovery as one opaque loop. A score increase alone cannot prove that the data was admissible, the candidate came from the declared parent, the benchmark was comparable, or the promoted artifact can be recovered.
 
-Current branch: `feat/coevolution-audit-recovery`
-Current Draft PR: [#12](https://github.com/ed3c/post-training-rsi-pipeline/pull/12)
-
-The machine-readable source of current directory, State Machine, artifact, command, and PR ownership is [`docs/architecture-manifest.json`](docs/architecture-manifest.json). Where an older PR #7 paragraph below describes Co-Evolution as planned, this PR #12 overlay is the current branch truth.
-
-Supported deterministic local commands on this branch:
+This project makes those transitions explicit:
 
 ```text
-`demo`
-`rsi`
-`verify`
-`audit`
-`approvals`
-`review`
-`coevolve`
-`coevolve-status`
-`coevolve-audit`
+diagnose
+→ form a data hypothesis
+→ synthesize candidate data
+→ verify and optionally review the dataset
+→ train a candidate
+→ serve in a bounded adapter lifecycle
+→ evaluate against declared benchmarks
+→ approve, reject, roll back, or stop
+→ persist lineage, decisions, checkpoints, and audit evidence
 ```
 
-Co-Evolution composition and audit ownership:
+A separate Co-Evolution controller freezes one side while changing the other, captures observable traces, and preserves rollback and stop conditions.
+
+## Core capabilities
+
+| Area | What the repository provides |
+|---|---|
+| Data contracts | Typed datasets, source identity, verification results, budgets, and immutable control records |
+| RSI controller | Resumable multi-iteration State Machine with promotion, rejection, rollback, plateau, and stop rules |
+| Lineage | Atomic checkpoint bundles, transactions, parent/Peak continuity, quarantine, and compare-and-swap promotion |
+| Human review | Content-addressed dataset/checkpoint requests and immutable approve/deny decisions |
+| Provider boundary | Strict mock/command adapters, bounded execution, artifact recomputation, endpoint teardown, and fail-closed preflight |
+| Co-Evolution | Frozen-model Harness search, trace harvesting, model inner loop, convergence rules, durable resume, and audit |
+| Recovery | Read-only status, integrity audit, forensic bundle, and explicit recovery activation planning |
+| Evidence | Exact hashes, run IDs, decisions, transactions, artifacts, pointers, and machine-readable architecture mapping |
+
+The exact supported, component-only, planned, and externally unverified state is maintained in [`docs/implementation-status.md`](docs/implementation-status.md). Historical branch or Pull Request overlays are delivery records, not the current `main` contract.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    A[BOOT] --> B[DIAGNOSE]
+    B --> C[HYPOTHESIS]
+    C --> D[SYNTHESIZE]
+    D --> E[VERIFY]
+    E -->|admissible| F[TRAIN]
+    E -->|invalid| Q[QUARANTINED]
+    F --> G[SERVE]
+    G --> H[EVALUATE]
+    H --> I[DECIDE]
+    I -->|strict improvement + authority| P[PROMOTED]
+    I -->|no improvement| R[REJECTED]
+    I -->|regression| X[ROLLED BACK]
+    P --> B
+    R --> B
+    P --> S[STOPPED]
+    R --> S
+```
+
+Model/Harness Co-Evolution:
 
 ```text
-src/post_training_rsi/orchestration/coevolution.py
-  FREEZE_MODEL → MUTATE_HARNESS → HARVEST_TRACES
-  → TRAIN_MODEL → PROMOTE_MODEL / ROLLBACK_MODEL
-  → SLIM_HARNESS → next cycle or STOPPED
-
-src/post_training_rsi/audit/
-  durable Run/transaction/pointer/artifact graph
-  → read-only status
-  → PASS / WARN / FAIL integrity report
-  → no automatic repair or pointer mutation
+FREEZE_MODEL
+→ MUTATE_HARNESS
+→ HARVEST_TRACES
+→ TRAIN_MODEL
+→ PROMOTE_MODEL or ROLLBACK_MODEL
+→ SLIM_HARNESS
+→ next bounded cycle or STOPPED
 ```
 
-Ordinary GitHub successor chain:
-
-```text
-PR #7  Durable recursive RSI
-└── PR #8   Harness outer loop
-    └── PR #9   Observable Trace harvesting
-        └── PR #10  Model inner loop
-            └── PR #11  Co-Evolution convergence
-                └── PR #12  Read-only audit and recovery boundary
-```
-
-Git Town is not configured. The graph is documentation, not executable Git Town metadata.
-
-## Current integration truth
-
-Current integration branch: `feat/coevolution-convergence`  
-Draft integration PR: [#11 — converge durable Model/Harness Co-Evolution](https://github.com/ed3c/post-training-rsi-pipeline/pull/11)  
-Validated code head before the latest documentation commits: `ac334be8411f45196d2522c885ff893cb2d44fda`  
-Package version: `0.2.0`
-
-PR #7 now composes the State-domain contracts, RSI decision policy, transactional lineage runtime, strict adapters, and immutable HITL approvals into a resumable RSI controller. The branch is not yet merged to `main`.
-
-| Capability | Status on PR #7 | Current truth |
-|---|---|---|
-| One-pass `demo` | Supported | Dependency-free synthesis → verify → train → deploy → evaluate compatibility path |
-| Multi-iteration `rsi` | Supported | Runs or resumes the evidence-first RSI controller with Peak/reject/rollback/stop policy |
-| Dataset `verify` | Supported | Writes the standard data bundle and exact accepted-Dataset SHA-256 |
-| Checkpoint `audit` | Supported | Reloads and verifies the Checkpoint bundle, transaction, lineage, and Peak relation |
-| `approvals` / `review` | Supported | Lists content-addressed requests and commits immutable approve/deny Decisions |
-| Control records | Supported | `post-training-rsi.control/v1` records are emitted and transactionally persisted |
-| Transactional lineage | Supported | Immutable records, atomic Checkpoint bundles, Peak CAS, and quarantine markers |
-| Adapter runtime | Supported by composition | Strict mock/command selection, bounded execution, artifact verification, endpoint teardown |
-| HITL Dataset/Checkpoint review | Supported when configured | Missing, pending, denied, expired, unauthorized, or mismatched review fails closed |
-| Historical Peak | Supported | Promotion requires strict score improvement and a committed promotion Decision |
-| Model/Harness Co-Evolution | Supported deterministic reference | `coevolve` composes frozen-model Harness search, observable Trace harvesting, model inner-loop evaluation, durable resume, pointer history, and rollback/stop guards |
-| Co-Evolution `coevolve-status` / `coevolve-audit` | Supported read-only | Links Run pointer, latest transaction, and latest Snapshot; audits the durable evidence graph and writes one report without repairing anything |
-| Provider `provider-preflight` | Supported read-only | Fail-closed admission checks before any data leaves the process: adapter classification, credential *names*, Teacher URL policy, command resolution, budgets, approvals, benchmarks, and a destination-authorization receipt bound to the exact config hash and origin |
-| Real cloud/GPU execution | Not verified | No claim of real Teacher API, TRL/DeepSpeed job, live serving, or production benchmark run |
-| Git Town stack | Not configured | Ordinary GitHub parent/child and sibling PRs only; Git Town remains fail closed |
-
-Detailed status, gaps, and evidence are indexed in [`docs/implementation-status.md`](docs/implementation-status.md) and [`docs/traceability-index.md`](docs/traceability-index.md).
+See [`docs/state-machine.md`](docs/state-machine.md), [`docs/rsi-convergence.md`](docs/rsi-convergence.md), and [`docs/coevolution-convergence.md`](docs/coevolution-convergence.md).
 
 ## Quick start
 
+### Requirements
+
+- Python 3.11+
+- Git
+- No cloud or GPU dependency for the deterministic reference path
+
 ```bash
+git clone https://github.com/ed3c/post-training-rsi-pipeline.git
+cd post-training-rsi-pipeline
+
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -e '.[dev]'
-```
 
-Compatibility demonstration:
-
-```bash
-post-training-rsi \
-  --config configs/pipeline.example.json \
-  --workspace artifacts/demo \
-  demo
-```
-
-Run or resume the recursive controller:
-
-```bash
-post-training-rsi \
-  --config configs/pipeline.example.json \
-  --workspace artifacts/rsi \
-  --run-id run-local-001 \
-  rsi
-```
-
-Run or resume the deterministic Co-Evolution reference runtime:
-
-```bash
-post-training-rsi \
-  --config configs/pipeline.example.json \
-  --workspace artifacts/coevolution \
-  --run-id coevolution-local-001 \
-  coevolve
-```
-
-Verify a JSONL Dataset:
-
-```bash
-post-training-rsi \
-  --config configs/pipeline.example.json \
-  --workspace artifacts/verify \
-  verify \
-  --input examples.jsonl \
-  --iteration 1
-```
-
-Audit a committed Checkpoint:
-
-```bash
-post-training-rsi \
-  --workspace artifacts/rsi \
-  audit \
-  --checkpoint-id <checkpoint-id>
-```
-
-List and review HITL requests:
-
-```bash
-post-training-rsi \
-  --config configs/pipeline.example.json \
-  --workspace artifacts/rsi \
-  approvals
-
-post-training-rsi \
-  --config configs/pipeline.example.json \
-  --workspace artifacts/rsi \
-  review \
-  --request-id <request-id> \
-  --expected-request-sha256 <sha256> \
-  --approve \
-  --reviewer reviewer-001 \
-  --role release-manager \
-  --reason "Evidence and sample reviewed."
-```
-
-Development gate:
-
-```bash
-make install
 make lint
 make typecheck
 make test
 make demo
 ```
 
-`make coevolve` runs the deterministic local reference composition. It does not authorize real GPU, cloud endpoint, production benchmark, or autonomous Git mutation.
+Run or resume the deterministic RSI controller:
 
-## 1. Supported RSI State Machine
-
-```mermaid
-stateDiagram-v2
-    [*] --> BOOT
-    BOOT --> DIAGNOSE: config + Run metadata accepted
-    DIAGNOSE --> HYPOTHESIS: select data hypothesis
-    HYPOTHESIS --> SYNTHESIZE: Teacher/generator invocation
-    SYNTHESIZE --> VERIFY: cost and synthesis evidence committed
-    VERIFY --> QUARANTINED: no admissible Dataset
-    VERIFY --> DATA_REVIEW_PENDING: Dataset review required
-    VERIFY --> TRAIN: review disabled
-    DATA_REVIEW_PENDING --> TRAIN: matching approval granted
-    DATA_REVIEW_PENDING --> STOPPED: pending/denied/expired/invalid
-    TRAIN --> SERVE: Candidate artifact verified
-    TRAIN --> ABORTED: training/integrity failure
-    SERVE --> EVALUATE: endpoint ready
-    SERVE --> ABORTED: deploy/readiness failure
-    EVALUATE --> DECIDE: benchmark evidence committed
-    DECIDE --> MODEL_REVIEW_PENDING: qualified Candidate and review required
-    DECIDE --> PROMOTED: qualified Candidate and review disabled
-    DECIDE --> REJECTED: not above Peak + delta
-    DECIDE --> ROLLED_BACK: regression beyond tolerance
-    MODEL_REVIEW_PENDING --> PROMOTED: matching approval granted
-    MODEL_REVIEW_PENDING --> REJECTED: pending/denied/expired/invalid
-    PROMOTED --> DIAGNOSE: limits remain
-    REJECTED --> DIAGNOSE: patience and limits remain
-    PROMOTED --> STOPPED: max iterations
-    REJECTED --> STOPPED: plateau or max iterations
-    QUARANTINED --> [*]
-    ROLLED_BACK --> [*]
-    STOPPED --> [*]
-    ABORTED --> [*]
+```bash
+post-training-rsi   --config configs/pipeline.example.json   --workspace artifacts/rsi   --run-id run-local-001   rsi
 ```
 
-The exact transition guards, durable records, and resume behavior are documented in [`docs/rsi-convergence.md`](docs/rsi-convergence.md) and [`docs/state-machine.md`](docs/state-machine.md).
+Run the deterministic Co-Evolution reference:
 
-## 2. State and lineage invariants
+```bash
+make coevolve
+```
+
+Discover the command surface:
+
+```bash
+post-training-rsi --help
+```
+
+Optional extras exist for cloud adapters, semantic models, experiment tracking, LangGraph, and training libraries. Installing an extra does not prove that an external provider, GPU job, serving endpoint, or production benchmark is admitted.
+
+## Evidence and promotion rules
+
+The controller keeps these concepts separate:
+
+```text
+generated data
+!= verified dataset
+!= reviewed dataset
+!= trained candidate
+!= evaluated candidate
+!= qualified candidate
+!= approved promotion
+!= active Peak
+!= production release
+```
+
+Key invariants include:
 
 ```text
 active_checkpoint_id == peak_checkpoint_id
@@ -222,270 +148,61 @@ candidate.parent_checkpoint_id == active_checkpoint_id
 candidate_score > peak_score + min_improvement
 ```
 
-The following are non-negotiable:
+Equality at the improvement boundary is rejection. Rejected or rolled-back candidates never become the next parent. Promotion requires a committed decision bound to the exact checkpoint, and worker-reported artifact hashes are recomputed by the controller.
 
-- Equality at the improvement boundary is rejection.
-- Rejected or rolled-back Candidates never become the next parent.
-- A valid final-iteration improvement is recorded before the max-iteration stop.
-- Exact budget limits are allowed; crossing a limit aborts.
-- Peak mutation requires a committed `PROMOTE` Decision for the same Checkpoint.
-- Peak mutation is compare-and-swap against the expected previous Peak.
-- Peak iteration cannot move backward and Peak score must increase strictly.
-- Approval is bound to Subject type, Subject ID, and Subject SHA-256.
-- Missing or invalid approval is not approval.
-- Worker-reported artifact hashes are recomputed by the controller.
-- Serving teardown runs in `finally`.
-- Cross-Run and future-evidence references fail closed.
-- Process memory is not resume truth; durable state is.
+## Provider and data boundary
 
-## 3. Directory → State Machine ownership
+Before any configured external destination is used, provider preflight checks adapter type, credential **names**, destination policy, command resolution, budgets, approvals, benchmark requirements, and an authorization receipt bound to the exact configuration and origin.
+
+Do not send private training data, proprietary repository content, customer data, model weights, or credentials to a provider without explicit data-and-destination authorization.
+
+## Repository map
 
 ```text
-post-training-rsi-pipeline/
-├── AGENTS.md                              repository-wide Agent contract
-├── README.md                              current State Machines, data flow, PR index
-├── configs/
-│   ├── pipeline.example.json              BOOT policy and provider defaults
-│   └── rsi_policy_rules.json              explicit policy reference values
-├── docs/
-│   ├── README.md                          multi-hop document index
-│   ├── implementation-status.md           exact branch truth and gap registry
-│   ├── state-machine.md                   states, guards, events, evidence
-│   ├── rsi-convergence.md                 supported controller and resume flow
-│   ├── control-plane-contracts.md         `post-training-rsi.control/v1`
-│   ├── rsi-loop-policy.md                 strict Candidate decision boundary
-│   ├── adapter-runtime.md                 provider/process/lifecycle contract
-│   ├── lineage-runtime.md                 transaction, bundle, Peak, quarantine
-│   ├── hitl-approval.md                   immutable review authority
-│   ├── traceability-index.md              requirement → code → test → artifact → PR
-│   ├── stacked-pr-plan.md                 actual and proposed molecular PR graph
-│   ├── architecture.md                    target source architecture
-│   └── productionization.md               real infrastructure requirements
-├── src/post_training_rsi/
-│   ├── __main__.py                        CLI dispatch: demo/rsi/coevolve/verify/audit/approvals/review
-│   ├── config.py                          CONFIG_LOADED / CONFIG_REJECTED
-│   ├── control_plane/
-│   │   ├── enums.py                       State/Event/Stop/Action/Subject/Evidence taxonomy
-│   │   ├── records.py                     Evidence/Decision/Transition/Snapshot records
-│   │   └── validation.py                  exact schema and canonical JSON
-│   ├── orchestration/
-│   │   ├── converged.py                   supported multi-stage RSI composition
-│   │   ├── rsi_policy.py                  EVALUATE → promote/reject/rollback/stop
-│   │   └── run_state.py                   Run identity, deterministic clock, resume metadata
-│   ├── adapter_runtime/                   bounded provider execution and evidence translation
-│   ├── approval/                          Dataset/Checkpoint/Harness authority boundary
-│   ├── synthesis/                         SYNTHESIZE provider boundary
-│   ├── verification/                      VERIFY / QUARANTINED data admission
-│   ├── training/                          TRAIN Candidate creation
-│   ├── serving/                           SERVE endpoint lifecycle
-│   ├── evaluation/                        EVALUATE benchmark/failure evidence
-│   ├── lineage/                           immutable persistence, bundle, Peak CAS, audit
-│   ├── cost.py                            stage cost and circuit accounting
-│   ├── models.py                          legacy/current portable payloads
-│   ├── engine.py                          one-pass compatibility `demo`
-│   ├── harness/                           outer/middle/inner Co-Evolution components and durable persistence
-│   ├── audit/                             read-only Co-Evolution evidence-graph verification
-│   ├── preflight/                         fail-closed provider admission before anything leaves the process
-│   └── recovery_bundle/                   content-addressed forensic bundles and staged-only restore
-├── tests/                                 deterministic, no-network/no-GPU evidence
-└── .github/workflows/ci.yml               compile, lint, type, tests, CLI smoke
+src/post_training_rsi/
+├── orchestration/     RSI and Co-Evolution controllers
+├── control/           typed State and decision records
+├── lineage/           transactions, checkpoints, Peak and recovery
+├── adapters/          synthesis, training, serving and evaluation boundaries
+├── approvals/         immutable HITL authority
+└── audit/             read-only status and integrity evidence
+
+configs/               deterministic policy examples
+docs/                  architecture, status, contracts, recovery and traceability
+tests/                 transition, tamper, failure and resume coverage
+artifacts/             generated local workspaces; not source truth
 ```
 
-### Ownership matrix
+## Documentation
 
-| Directory/module | State responsibility | Input | Output/evidence | Must not own |
-|---|---|---|---|---|
-| `config.py` | BOOT validation | JSON/defaults | immutable `PipelineConfig` | transition decisions |
-| `control_plane/` | common representation | typed values / exact mappings | canonical records | adjacency, thresholds, SDK calls, persistence |
-| `orchestration/rsi_policy.py` | Candidate decision | EVALUATE Snapshot + observation | Decision/Transition/Snapshot | provider or filesystem internals |
-| `orchestration/converged.py` | supported sequencing | config, protocols, durable state | resumable Run result | weakening child-component guards |
-| `orchestration/run_state.py` | Run identity/resume | Run ID + config hash | immutable Run metadata | quality decisions |
-| `adapter_runtime/` | provider boundary | typed invocation | validated result + evidence | Peak or approval decisions |
-| `approval/` | human authority | exact Subject + sample/evidence | immutable request/decision | authentication implementation or score policy |
-| `verification/` | data admission | examples + history/benchmark | accepted/quarantine/audit | model-quality decisions |
-| `training/` | Candidate creation | exact Dataset/hash + parent | Checkpoint + loss/artifact metadata | benchmark policy |
-| `serving/` | endpoint lifecycle | Checkpoint | endpoint/readiness/teardown | promotion policy |
-| `evaluation/` | benchmark facts | endpoint/Checkpoint/Harness | scores + failure traces | updating Peak directly |
-| `lineage/` | immutable persistence | control records and artifacts | transactions, bundles, pointers, markers | deciding whether score is good |
-| `cost.py` | budget facts | stage charges | ledger/circuit evidence | quality policy |
-| `harness/` | future non-parametric search | failures/tasks/Harness | snapshots/traces | model weight updates |
-| `orchestration/coevolution.py` | Co-Evolution sequencing | frozen model, active Harness, durable state | cycle transactions, pointer history, terminal reason | provider execution or reviewer authority |
-| `audit/` | read-only evidence verification | durable Run/transaction/pointer graph | PASS/WARN/FAIL report | any repair, pointer mutation, or activation |
-| `preflight/` | provider admission | config, env var names, authorization receipt | admission report | network, subprocess, GPU, or endpoint calls |
-| `recovery_bundle/` | forensic capture and staged restore | source workspace or verified bundle | content-addressed bundle, staged directory | activating a restore or switching a live pointer |
-| `tests/` | deterministic proof | fixtures | assertions and coverage | network/API/GPU dependency |
+- [Documentation index](docs/README.md)
+- [Implementation status](docs/implementation-status.md)
+- [Architecture](docs/architecture.md)
+- [State Machine](docs/state-machine.md)
+- [RSI convergence](docs/rsi-convergence.md)
+- [Harness outer loop](docs/harness-outer-loop.md)
+- [Model inner loop](docs/model-inner-loop.md)
+- [Co-Evolution convergence](docs/coevolution-convergence.md)
+- [HITL approval](docs/hitl-approval.md)
+- [Provider preflight](docs/provider-preflight.md)
+- [Recovery and audit](docs/coevolution-audit-recovery.md)
+- [Documentation language policy](docs/I18N.md)
+- [Open-source readiness checklist](docs/OPEN_SOURCE_CHECKLIST.md)
 
-## 4. Runtime data and evidence flow
+## Non-goals
 
-```mermaid
-flowchart TD
-    C[PipelineConfig + Run ID] --> RM[RunMetadata]
-    RM --> H[Diagnosis + hypothesis]
-    H --> S[Synthesis adapter]
-    S --> RAW[raw Dataset + synthesis manifest]
-    RAW --> V[VerificationPipeline]
-    V --> AUD[filter audit]
-    V --> ACC[accepted Dataset + SHA-256]
-    ACC --> DA{Dataset review?}
-    DA -->|approved/disabled| T[Trainer]
-    DA -->|pending/denied/invalid| X[fail closed]
-    T --> I[Artifact integrity]
-    I --> CK[Candidate Checkpoint]
-    CK --> DEP[Deploy endpoint]
-    DEP --> EV[Evaluate]
-    EV --> TD[Teardown in finally]
-    EV --> P[RSIDecisionPolicy]
-    P --> MA{Checkpoint review?}
-    MA -->|approved/disabled| TX[Control transaction]
-    MA -->|pending/denied/invalid| RJ[Reject; Peak unchanged]
-    RJ --> TX
-    TX --> CB[Atomic Checkpoint bundle]
-    CB --> CAS[Peak CAS on PROMOTE]
-    TX --> QM[Reject/rollback/quarantine marker]
-    CAS --> N[Next Snapshot or terminal report]
-    QM --> N
-```
+This repository does not claim:
 
-The transaction marker is written last. A record file without a committed transaction is an orphan, not evidence.
+- that recursive improvement will continue, converge, or outperform a baseline;
+- that synthetic data is correct merely because it was generated;
+- that a local or mock run represents a real cloud/GPU run;
+- that an automated score authorizes model promotion, release, or deployment;
+- that external provider terms, privacy, security, or legal requirements are satisfied automatically.
 
-## 5. Artifact and evidence layout
+## Contributing, security, and governance
 
-```text
-<workspace>/
-├── run/
-│   └── run-metadata.json
-├── iterations/iter-001/
-│   ├── raw.jsonl
-│   ├── accepted.jsonl
-│   ├── quarantine.jsonl
-│   ├── filter_audit.jsonl
-│   ├── synthesis_manifest.json
-│   └── dataset_summary.json
-├── control/
-│   ├── evidence/<evidence-id>.json
-│   ├── decisions/<decision-id>.json
-│   ├── transitions/<transition-id>.json
-│   ├── snapshots/<snapshot-id>.json
-│   └── transactions/<transaction-id>.json
-├── checkpoints/<checkpoint-id>/
-│   ├── checkpoint.json
-│   ├── lineage_manifest.json
-│   └── bundle_manifest.json
-├── peak_checkpoint.json
-├── peak_history/iter-<N>-<checkpoint-id>.json
-├── quarantine/iter-<N>-<subject-type>-<subject-id>.json
-├── approvals/
-│   ├── samples/
-│   ├── requests/
-│   └── decisions/
-├── adapter-runtime/<adapter>/<idempotency-hash>/
-│   ├── request.json
-│   ├── response.json
-│   ├── output/
-│   └── commit.json
-└── reports/
-    ├── rsi-run-summary.json
-    └── regression-audit-<checkpoint-id>.json
-```
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing state, lineage, provider, or evidence semantics. Report vulnerabilities through [SECURITY.md](SECURITY.md). Support and authority boundaries are documented in [SUPPORT.md](SUPPORT.md) and [GOVERNANCE.md](GOVERNANCE.md).
 
-## 6. Pull Request traceability
+## License
 
-Actual ordinary GitHub graph:
-
-```text
-PR #1  docs/agent-state-machine-index
-└── PR #2  feat/state-domain-contracts
-    ├── PR #3  feat/rsi-loop-policy
-    ├── PR #4  feat/lineage-runtime
-    ├── PR #5  feat/adapter-runtime
-    └── PR #6  feat/hitl-approval
-         \__ PR #7  feat/rsi-convergence
-```
-
-PR #7 is based on PR #3 and contains the sibling implementations through an explicit convergence merge. It is the only owner allowed to synchronize root runtime documentation for the integrated branch.
-
-Proposed successor graph:
-
-```text
-PR #7  RSI convergence
-├── PR #8  Harness outer-loop mutation and evaluation
-├── PR #9  successful-trace harvesting and verification
-└── PR #10 model inner-loop training and hot-swap
-     \__ PR #11 Co-Evolution convergence and CLI
-```
-
-See [`docs/stacked-pr-plan.md`](docs/stacked-pr-plan.md) for allowed paths, dependencies, collision ownership, merge order, rollback subjects, and required gates.
-
-## 7. Git Town status
-
-Git Town is not active for this repository. Do not run `git town propose`, `git town sync`, or `git town ship` until all admission evidence exists:
-
-```text
-exact Git Town version pin
-repository configuration
-verified parent graph
-linked-worktree ownership/leases
-non-interactive dry run
-no-push rehearsal evidence
-active stack.tsv
-human approval to mutate refs
-```
-
-Until then, the PR graph in this README is documentation, not executable Git Town metadata.
-
-## 8. Validation evidence
-
-The repair-and-validation workflow for code head `ac334be8411f45196d2522c885ff893cb2d44fda` passed:
-
-```text
-compileall
-Ruff
-mypy
-full pytest with coverage floor
-compatibility demo smoke
-converged RSI smoke
-Checkpoint audit smoke
-```
-
-The PR-triggered CI run created by the repair bot required workflow approval and started no jobs. The PR stays Draft until the exact current documentation head receives a normal green check set.
-
-## 9. Remaining gaps
-
-No claim is made that PR #7 has validated:
-
-- real inference-cloud Teacher credentials, quotas, retries, or cost;
-- real TRL/DeepSpeed SFT or DPO on a GPU provider;
-- live vLLM/SGLang deployment and teardown;
-- Inspect AI or lm-eval task suites against a live endpoint;
-- DVC, lakeFS, MLflow, or remote object-store transactions;
-- distributed locks, multi-region writers, retention, backup, or disaster recovery;
-- enterprise identity provider, MFA, reviewer quorum, or separation of duties;
-- production secret manager, sandbox, network egress, or policy enforcement;
-- complete Model/Harness Co-Evolution.
-
-These are explicit successor requirements, not hidden implementation details.
-
-<!-- PR13_FORENSIC_RECOVERY_INDEX_START -->
-## Forensic recovery successor — Draft PR #13
-
-The read-only Co-Evolution audit boundary is followed by a content-addressed, local-only recovery slice:
-
-```text
-PR #12  read-only Co-Evolution audit and recovery diagnosis
-└── PR #13  deterministic forensic bundle + inactive staged restore
-```
-
-PR #13 owns only:
-
-```text
-local workspace scan
-  → content-addressed blobs
-  → canonical recovery manifest
-  → exact bundle verification
-  → reconstruction into a new directory
-  → exact staged-copy verification
-  → STAGED_INACTIVE
-```
-
-It has no `ACTIVATE` transition and never overwrites the live workspace. See [`docs/forensic-recovery-bundle.md`](docs/forensic-recovery-bundle.md) and the machine-readable [`docs/forensic-recovery-manifest.json`](docs/forensic-recovery-manifest.json).
-<!-- PR13_FORENSIC_RECOVERY_INDEX_END -->
+Licensed under the [MIT License](LICENSE). Third-party models, datasets, provider services, and dependencies remain subject to their own terms.
