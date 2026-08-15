@@ -1,0 +1,72 @@
+name: Bug report｜錯誤回報
+description: Reproducible defect without secrets or private data｜可重現且不含秘密或私有資料的缺陷
+title: "[Bug] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report security vulnerabilities here. Remove credentials, private data, customer data, and proprietary repository content.
+        不要在此回報安全漏洞。請移除 Credential、Private data、Customer data 與 Proprietary repository content。
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit｜版本或 Commit
+      placeholder: v0.x.y or full commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment｜環境
+      description: OS, architecture, Python/runtime versions, install method, relevant optional dependencies.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction｜最小重現
+      description: Exact bounded commands and sanitized inputs.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior｜預期行為
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and evidence｜實際行為與證據
+      description: Include exit codes, relevant logs, receipts, or traces with secrets removed.
+    validations:
+      required: true
+  - type: dropdown
+    id: evidence_level
+    attributes:
+      label: Evidence environment｜證據環境
+      options:
+        - Static inspection only｜僅靜態檢查
+        - Local deterministic run｜本機確定性執行
+        - CI run｜CI 執行
+        - Fixture or mock｜Fixture 或 Mock
+        - Sandbox or isolated runtime｜Sandbox 或隔離 Runtime
+        - Emulator or device｜Emulator 或 Device
+        - External or production-like runtime｜外部或類 Production Runtime
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact and affected boundary｜影響與受影響邊界
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations｜確認
+      options:
+        - label: I searched existing Issues and Pull Requests.｜我已搜尋既有 Issues 與 Pull Requests。
+          required: true
+        - label: This report contains no secrets, private data, or vulnerability details.｜此報告不含 Secret、Private data 或漏洞細節。
+          required: true
