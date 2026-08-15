@@ -42,7 +42,10 @@ def _config_mapping() -> dict[str, object]:
             "sample_rate": 1.0,
             "min_sample_items": 1,
             "max_sample_items": 8,
-            "decision_ttl_seconds": 86400,
+            # These tests exercise approval pause/resume and denial, not expiry.
+            # A non-expiring fixture keeps the deterministic ReferenceClock
+            # independent from the wall clock used by the operator-facing CLI.
+            "decision_ttl_seconds": None,
             "allowed_reviewer_roles": ["release-manager"],
         },
     }

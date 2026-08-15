@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability｜安全漏洞
+    url: https://github.com/ed3c/post-training-rsi-pipeline/security/advisories/new
+    about: Report vulnerabilities privately. 請私下回報漏洞，不要建立公開 Issue。
+  - name: Support policy｜支援政策
+    url: https://github.com/ed3c/post-training-rsi-pipeline/blob/main/SUPPORT.md
+    about: Read support scope before filing. 建立 Issue 前請先閱讀支援範圍。

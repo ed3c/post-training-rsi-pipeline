@@ -1,0 +1,104 @@
+{
+  "schema": "docs-i18n/v1",
+  "repository": "ed3c/post-training-rsi-pipeline",
+  "default_locale": "en",
+  "locales": [
+    "en",
+    "zh-TW"
+  ],
+  "pairs": [
+    {
+      "key": "README",
+      "english": "README.md",
+      "zh-TW": "README.zh-TW.md"
+    },
+    {
+      "key": "CONTRIBUTING",
+      "english": "CONTRIBUTING.md",
+      "zh-TW": "CONTRIBUTING.zh-TW.md"
+    },
+    {
+      "key": "SECURITY",
+      "english": "SECURITY.md",
+      "zh-TW": "SECURITY.zh-TW.md"
+    },
+    {
+      "key": "CODE_OF_CONDUCT",
+      "english": "CODE_OF_CONDUCT.md",
+      "zh-TW": "CODE_OF_CONDUCT.zh-TW.md"
+    },
+    {
+      "key": "SUPPORT",
+      "english": "SUPPORT.md",
+      "zh-TW": "SUPPORT.zh-TW.md"
+    },
+    {
+      "key": "GOVERNANCE",
+      "english": "GOVERNANCE.md",
+      "zh-TW": "GOVERNANCE.zh-TW.md"
+    },
+    {
+      "key": "MAINTAINERS",
+      "english": "MAINTAINERS.md",
+      "zh-TW": "MAINTAINERS.zh-TW.md"
+    },
+    {
+      "key": "DOCS_INDEX",
+      "english": "docs/README.md",
+      "zh-TW": "docs/README.zh-TW.md"
+    },
+    {
+      "key": "I18N",
+      "english": "docs/I18N.md",
+      "zh-TW": "docs/I18N.zh-TW.md"
+    },
+    {
+      "key": "OSS_CHECKLIST",
+      "english": "docs/OPEN_SOURCE_CHECKLIST.md",
+      "zh-TW": "docs/OPEN_SOURCE_CHECKLIST.zh-TW.md"
+    },
+    {
+      "key": "CHANGELOG",
+      "english": "CHANGELOG.md",
+      "zh-TW": "CHANGELOG.zh-TW.md"
+    },
+    {
+      "key": "RELEASING",
+      "english": "RELEASING.md",
+      "zh-TW": "RELEASING.zh-TW.md"
+    }
+  ],
+  "bilingual_inline": [
+    ".github/PULL_REQUEST_TEMPLATE.md"
+  ],
+  "controlled_exceptions": [
+    {
+      "glob": "**/AGENTS.md",
+      "reason": "Executable or normative Agent instruction contract; translation can change behavior."
+    },
+    {
+      "glob": "**/CLAUDE.md",
+      "reason": "Executable or normative Agent instruction contract; translation can change behavior."
+    },
+    {
+      "glob": "**/SKILL.md",
+      "reason": "Runtime Skill entrypoint; preserve front matter and executable semantics."
+    },
+    {
+      "glob": "evals/**",
+      "reason": "Generated or retained evaluation evidence; byte identity and provenance take precedence."
+    },
+    {
+      "glob": "receipts/**",
+      "reason": "Generated evidence receipts."
+    },
+    {
+      "glob": "fixtures/**",
+      "reason": "Deterministic fixtures and negative controls."
+    },
+    {
+      "glob": "examples/**",
+      "reason": "Executable examples and fixtures remain canonical; bilingual indexes describe them."
+    }
+  ]
+}

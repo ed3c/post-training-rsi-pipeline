@@ -1,0 +1,32 @@
+name: Documentation i18n
+
+on:
+  pull_request:
+    paths:
+      - "**/*.md"
+      - "docs/i18n-manifest.json"
+      - "scripts/check_docs_i18n.py"
+      - ".github/workflows/docs-i18n.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "**/*.md"
+      - "docs/i18n-manifest.json"
+      - "scripts/check_docs_i18n.py"
+      - ".github/workflows/docs-i18n.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate maintained document pairs
+        run: python scripts/check_docs_i18n.py

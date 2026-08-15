@@ -1,0 +1,55 @@
+name: Feature or design proposal｜功能或設計提案
+description: Propose a bounded user outcome with evidence and non-goals｜以 Evidence 與 Non-goals 提出有界限的成果
+title: "[Proposal] "
+labels: []
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and affected users｜問題與受影響使用者
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Proposed outcome｜預期成果
+      description: State an observable result, not only an implementation choice.
+    validations:
+      required: true
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-goals｜不處理事項
+    validations:
+      required: true
+  - type: textarea
+    id: design
+    attributes:
+      label: Design and alternatives｜設計與替代方案
+      description: Include State Machine, data flow, trust boundaries, and rejected alternatives when relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Acceptance evidence｜驗收證據
+      description: Tests, negative controls, fixtures, benchmarks, external verification, or migration checks.
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: Security, privacy, compatibility, and licensing impact｜安全、隱私、相容性與授權影響
+  - type: textarea
+    id: rollout
+    attributes:
+      label: Rollout and rollback｜導入與回復
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations｜確認
+      options:
+        - label: I searched existing Issues and Pull Requests.｜我已搜尋既有 Issues 與 Pull Requests。
+          required: true
+        - label: I did not include secrets or private/restricted data.｜我未包含 Secret 或 Private／Restricted data。
+          required: true

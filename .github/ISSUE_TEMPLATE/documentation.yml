@@ -1,0 +1,37 @@
+name: Documentation or translation｜文件或翻譯
+description: Fix accuracy, navigation, examples, or English/Traditional Chinese parity｜修正正確性、導覽、範例或英／繁中一致性
+title: "[Docs] "
+labels: []
+body:
+  - type: input
+    id: path
+    attributes:
+      label: Document path｜文件路徑
+      placeholder: README.md
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem｜問題
+      description: Quote only the minimum needed and do not paste restricted content.
+    validations:
+      required: true
+  - type: textarea
+    id: correction
+    attributes:
+      label: Proposed correction｜建議修正
+    validations:
+      required: true
+  - type: dropdown
+    id: parity
+    attributes:
+      label: Language impact｜語言影響
+      options:
+        - English only source error; update both public versions
+        - Traditional Chinese translation error
+        - Broken language navigation
+        - Executable/immutable document exception
+        - Other
+    validations:
+      required: true
