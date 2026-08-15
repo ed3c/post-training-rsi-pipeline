@@ -1,124 +1,51 @@
-# Documentation index
+<!-- i18n-key: DOCS_INDEX; locale: en; reviewed: 2026-08-15 -->
+[English](README.md) · [繁體中文](README.zh-TW.md)
 
-This directory separates supported runtime truth, implemented components, exact schemas, target architecture, and PR delivery metadata.
+# Post-Training RSI Pipeline documentation
 
-## Required Agent read path
+Start with the [project README](../README.md). It explains the supported entrypoints, current maturity, evidence boundaries, quick start, and non-goals.
 
-```text
-../AGENTS.md
-  → ../README.md
-  → closest scoped AGENTS.md
-  → docs/README.md
-  → architecture-manifest.json
-  → implementation-status.md
-  → state-machine.md
-  → rsi-convergence.md
-  → relevant component contract
-  → traceability-index.md
-  → stacked-pr-plan.md
-```
+## Technical documentation
 
-The machine-readable directory → State Machine → evidence → PR index is [`architecture-manifest.json`](architecture-manifest.json).
+- [Implementation status](implementation-status.md) — Supported, component-only, planned, and unverified states.
+- [Architecture](architecture.md) — System components and ownership.
+- [State Machine](state-machine.md) — RSI states, guards, and evidence.
+- [RSI convergence](rsi-convergence.md) — Resume, promotion, rejection, rollback, and stop rules.
+- [Control-plane contracts](control-plane-contracts.md) — Typed control records and authority.
+- [Integration contracts](integration-contracts.md) — Cross-layer integration requirements.
+- [Adapter runtime](adapter-runtime.md) — Provider and process lifecycle boundaries.
+- [Lineage runtime](lineage-runtime.md) — Transactions, checkpoint bundles, and Peak continuity.
+- [HITL approval](hitl-approval.md) — Immutable human review authority.
+- [Provider preflight](provider-preflight.md) — Destination, credential, budget, and approval admission.
+- [Harness outer loop](harness-outer-loop.md) — Harness mutation and evaluation flow.
+- [Model inner loop](model-inner-loop.md) — Model update and evaluation flow.
+- [Co-Evolution convergence](coevolution-convergence.md) — Bounded Model/Harness convergence.
+- [Audit and recovery](coevolution-audit-recovery.md) — Read-only integrity and recovery boundary.
 
-## Status vocabulary
+## Project and community documentation
 
-- **Supported** — reachable from a checked-in CLI/API path and covered by deterministic evidence.
-- **Implemented component** — coded and tested but not composed into the supported runtime.
-- **Contract only** — schema or protocol exists without executable behavior.
-- **Partial** — some required edges/evidence are missing.
-- **Planned** — target only.
-- **Verified** — exact commit and named gate passed.
-- **Not verified** — required execution evidence is absent.
+- [Documentation language policy](I18N.md)
+- [Open-source readiness checklist](OPEN_SOURCE_CHECKLIST.md)
+- [Contributing](../CONTRIBUTING.md)
+- [Security](../SECURITY.md)
+- [Support](../SUPPORT.md)
+- [Governance](../GOVERNANCE.md)
+- [Maintainers](../MAINTAINERS.md)
+- [Code of Conduct](../CODE_OF_CONDUCT.md)
+- [Changelog](../CHANGELOG.md)
+- [Release process](../RELEASING.md)
 
-Do not infer support from an enum value, dataclass, diagram, fixture, or isolated unit test.
+## Source-of-truth order
 
-## Current truth documents
-
-| Document | Purpose |
-|---|---|
-| [`architecture-manifest.json`](architecture-manifest.json) | machine-readable supported commands, State Machines, directory ownership, evidence vocabulary, artifact index, Draft PR graph, validation index, and non-claims |
-| [`implementation-status.md`](implementation-status.md) | exact branch/PR status, supported commands, validation evidence, and open gaps |
-| [`state-machine.md`](state-machine.md) | current states, transition guards, durable records, terminal precedence, and Co-Evolution flow |
-| [`rsi-convergence.md`](rsi-convergence.md) | supported PR #7 RSI controller, data/evidence flow, resume semantics, CLI, and artifact layout |
-| [`coevolution-convergence.md`](coevolution-convergence.md) | PR #11 deterministic Co-Evolution reference composition, durable resume, pointer history, approval boundaries, and non-claims |
-| [`provider-preflight.md`](provider-preflight.md) | fail-closed provider admission checks, backend classification, redaction rules, and the destination-authorization receipt schema |
-| [`traceability-index.md`](traceability-index.md) | requirement → code → test → artifact → PR → status mapping |
-| [`stacked-pr-plan.md`](stacked-pr-plan.md) | actual PR graph, molecular successors, allowed paths, collision ownership, and Git Town admission |
-
-## Exact component contracts
-
-| Document | Component boundary |
-|---|---|
-| [`control-plane-contracts.md`](control-plane-contracts.md) | `post-training-rsi.control/v1` State/Event/Decision/Evidence records |
-| [`rsi-loop-policy.md`](rsi-loop-policy.md) | strict historical-Peak, reject, rollback, plateau, max-iteration, and budget policy |
-| [`adapter-runtime.md`](adapter-runtime.md) | strict provider selection, command protocol, artifact integrity, and serving lifecycle |
-| [`lineage-runtime.md`](lineage-runtime.md) | immutable control transactions, Checkpoint bundles, Peak CAS, and quarantine markers |
-| [`hitl-approval.md`](hitl-approval.md) | deterministic sampling, immutable review Decisions, authority validation, and fail-closed gates |
-| [`harness-outer-loop.md`](harness-outer-loop.md) | frozen-model Harness mutation, validation, benchmark, approval, strict acceptance, and plateau handoff |
-| [`trace-harvesting.md`](trace-harvesting.md) | successful observable Trace selection, common verification gates, immutable Trace Dataset, and training handoff |
-| [`model-inner-loop.md`](model-inner-loop.md) | exact Dataset/artifact/endpoint integrity, model decision policy, approval, promotion/rollback commit separation |
-
-## Target and production documents
-
-| Document | Purpose |
-|---|---|
-| [`architecture.md`](architecture.md) | source-derived RSI and Model/Harness Co-Evolution architecture; target sections remain explicitly labeled |
-| [`integration-contracts.md`](integration-contracts.md) | provider-neutral boundaries and fail-closed composition obligations |
-| [`productionization.md`](productionization.md) | real API/GPU/sandbox/identity/storage/operations prerequisites and non-claims |
-
-## Current branch boundary
-
-Draft PR #11 on `feat/coevolution-convergence` supports deterministic local reference commands:
+When documents disagree, use this order:
 
 ```text
-demo
-rsi
-coevolve
-verify
-audit
-approvals
-review
+merged code and repository policy
+> current machine-readable contracts and tests
+> current implementation/status ledger
+> architecture and runbooks
+> README summaries
+> Issues, Pull Requests, and conversational summaries
 ```
 
-Support here means reachable on the Draft branch and covered by deterministic no-network/no-GPU evidence. It does not claim real Teacher API inference, gradient training, production serving, production benchmark validity, enterprise identity, distributed transactions, autonomous Git mutation, or Git Town.
-
-Exact component and convergence records are indexed under [`validation/`](validation/INDEX.md). A `PENDING` record must never be presented as a passing gate.
-
-## Structural documentation update set
-
-A change to a State, Event, StopReason, Decision, Evidence kind, schema field, transition guard, resume rule, artifact path, approval rule, Peak rule, CLI command, directory owner, or PR dependency must update:
-
-```text
-../README.md
-architecture-manifest.json
-implementation-status.md
-state-machine.md
-rsi-convergence.md or coevolution-convergence.md
-relevant component document
-traceability-index.md
-stacked-pr-plan.md
-closest scoped AGENTS.md
-validation index / exact-head record when verification changes
-```
-
-Documentation must identify the exact branch and commit that supports a claim. Target diagrams must be labeled target, not current.
-
-## PR #12 current audit boundary
-
-- [`architecture-manifest.json`](architecture-manifest.json) — machine-readable current command, State Machine, directory, artifact, validation, and PR graph contract.
-- [`integration-contracts.md`](integration-contracts.md) — provider-neutral handoff and identity propagation rules.
-- [`coevolution-convergence.md`](coevolution-convergence.md) — supported deterministic `coevolve` reference runtime.
-- [`coevolution-audit-recovery.md`](coevolution-audit-recovery.md) — read-only `coevolve-status` and `coevolve-audit`, strict exit semantics, and human recovery playbook.
-
-Current branch commands include `demo`, `rsi`, `verify`, `audit`, `approvals`, `review`, `coevolve`, `coevolve-status`, and `coevolve-audit`.
-
-<!-- PR13_FORENSIC_RECOVERY_INDEX_START -->
-## Forensic recovery successor
-
-| Document | Purpose |
-|---|---|
-| [`forensic-recovery-bundle.md`](forensic-recovery-bundle.md) | content-addressed local export, exact verification, and inactive staged restore |
-| [`forensic-recovery-manifest.json`](forensic-recovery-manifest.json) | machine-readable PR-13 identity, State Machine, paths, invariants, and human-owned boundary |
-
-PR #13 follows the read-only audit boundary. It implements no automatic repair or production activation.
-<!-- PR13_FORENSIC_RECOVERY_INDEX_END -->
+An open Pull Request, configured workflow, example, fixture, generated report, or signed receipt cannot upgrade the implementation or verification state of `main` by itself.
