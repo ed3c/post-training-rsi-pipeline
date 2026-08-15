@@ -1,4 +1,4 @@
-<!-- i18n-key: DOCS_INDEX; locale: en; reviewed: 2026-08-15 -->
+<!-- i18n-key: DOCS_INDEX; locale: en; reviewed: 2026-08-16 -->
 [English](README.md) · [繁體中文](README.zh-TW.md)
 
 # Post-Training RSI Pipeline documentation
@@ -9,6 +9,7 @@ Start with the [project README](../README.md). It explains the supported entrypo
 
 - [Implementation status](implementation-status.md) — Supported, component-only, planned, and unverified states.
 - [Architecture](architecture.md) — System components and ownership.
+- [Machine-readable architecture manifest](architecture-manifest.json) — Exact State Machines, directory ownership, validation index, PR graph, and non-claims consumed by Agents and tests.
 - [State Machine](state-machine.md) — RSI states, guards, and evidence.
 - [RSI convergence](rsi-convergence.md) — Resume, promotion, rejection, rollback, and stop rules.
 - [Control-plane contracts](control-plane-contracts.md) — Typed control records and authority.

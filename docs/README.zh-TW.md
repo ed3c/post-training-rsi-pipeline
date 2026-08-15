@@ -1,4 +1,4 @@
-<!-- i18n-key: DOCS_INDEX; locale: zh-TW; reviewed: 2026-08-15 -->
+<!-- i18n-key: DOCS_INDEX; locale: zh-TW; reviewed: 2026-08-16 -->
 [English](README.md) · [繁體中文](README.zh-TW.md)
 
 # Post-Training RSI Pipeline 文件
@@ -9,6 +9,7 @@
 
 - [Implementation status](implementation-status.md) — Supported、Component-only、Planned 與 Unverified state。
 - [Architecture](architecture.md) — System component 與 Ownership。
+- [Machine-readable architecture manifest](architecture-manifest.json) — 供 Agent 與 Test 使用的精確 State Machine、Directory ownership、Validation index、PR graph 與 Non-claims。
 - [State Machine](state-machine.md) — RSI state、Guard 與 Evidence。
 - [RSI convergence](rsi-convergence.md) — Resume、Promotion、Rejection、Rollback 與 Stop rule。
 - [Control-plane contracts](control-plane-contracts.md) — Typed control record 與 Authority。
